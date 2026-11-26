@@ -310,3 +310,99 @@ test('L-04 完整性断言在锁不全时抛 G0_LOCKS_INCOMPLETE', () => {
     assert.deepEqual(e.missing.sort(), ['aspect', 'assetMode', 'base']);
   }
 });
+
+// ── B-01：Task ↔ Job 归属校验（V1.1 修复"绕过分支"）────────────────────
+// 旧实现的两条绕过路径，这里逐条钉死：
+//   · task.project_id 有值 → 整条 unit 校验被跳过
+//   · job.project_id 为空  → 同项目比较被短路
+// （addJob 复用本文件上方的工厂）
+function expectCode(fn, code) {
+  try {
+    fn();
+  } catch (e) {
+    assert.equal(e.code, code, `期望 ${code}，实际 ${e.code}：${e.message}`);
+    return e;
+  }
+  assert.fail(`应抛 ${code}，但没有抛`);
+}
+
+test('J-01 同项目绑定成功', () => {
+  const s = scaffold();
+  const j = addJob(s.pid);
+  const r = tj.linkTaskToJob({ taskId: s.tId, jobId: j });
+  assert.equal(r.created, true);
+  assert.equal(tj.jobOfTask(s.tId).job_id, j);
+});
+
+test('J-02 跨项目绑定被拒（JOB_PROJECT_MISMATCH）', () => {
+  const a = scaffold();
+  const b = scaffold();
+  const j = addJob(a.pid);
+  expectCode(() => tj.linkTaskToJob({ taskId: b.tId, jobId: j }), 'JOB_PROJECT_MISMATCH');
+  assert.equal(tj.jobOfTask(b.tId), null, '被拒时不得留下关系行');
+});
+
+test('J-03 task.project_id 与其 unit 不同项目（绕过路径 1）：旧实现按 task.project_id 与 job 比 → 放行；现按 unit 判定 → JOB_PROJECT_MISMATCH', () => {
+  const a = scaffold();
+  const b = scaffold();
+  // task 挂在 a 的 unit 上，却被写成 b 的项目；job 也用 b 的项目。
+  // 旧实现：projOfTask = task.project_id = b，与 job.project_id 相等 → 直接 INSERT（错误放行）
+  db.prepare('UPDATE render_tasks SET project_id = ? WHERE id = ?').run(b.pid, a.tId);
+  const j = addJob(b.pid);
+  expectCode(() => tj.linkTaskToJob({ taskId: a.tId, jobId: j }), 'JOB_PROJECT_MISMATCH');
+  assert.equal(tj.jobOfTask(a.tId), null, '被拒时不得留下关系行');
+});
+
+test('J-03b task.project_id 与 unit 不一致（job 与 unit 一致）→ TASK_PROJECT_MISMATCH', () => {
+  const a = scaffold();
+  const b = scaffold();
+  db.prepare('UPDATE render_tasks SET project_id = ? WHERE id = ?').run(b.pid, a.tId);
+  const j = addJob(a.pid);
+  expectCode(() => tj.linkTaskToJob({ taskId: a.tId, jobId: j }), 'TASK_PROJECT_MISMATCH');
+  assert.equal(tj.jobOfTask(a.tId), null);
+});
+
+test('J-04 task 引用的 unit 不存在 → TASK_UNIT_NOT_FOUND', () => {
+  const s = scaffold();
+  db.prepare("UPDATE render_tasks SET unit_id = 'u_ghost' WHERE id = ?").run(s.tId);
+  const j = addJob(s.pid);
+  expectCode(() => tj.linkTaskToJob({ taskId: s.tId, jobId: j }), 'TASK_UNIT_NOT_FOUND');
+});
+
+test('J-05 unit.project_id 为空 → TASK_PROJECT_MISMATCH', () => {
+  const s = scaffold();
+  db.prepare("UPDATE render_units SET project_id = '' WHERE id = ?").run(s.uId);
+  const j = addJob(s.pid);
+  expectCode(() => tj.linkTaskToJob({ taskId: s.tId, jobId: j }), 'TASK_PROJECT_MISMATCH');
+});
+
+test('J-06 job.project_id 为空 → JOB_PROJECT_MISMATCH（旧实现的绕过路径 2）', () => {
+  const s = scaffold();
+  const j = addJob('');
+  expectCode(() => tj.linkTaskToJob({ taskId: s.tId, jobId: j }), 'JOB_PROJECT_MISMATCH');
+  assert.equal(tj.jobOfTask(s.tId), null);
+});
+
+test('J-07 重复绑定同一 job 幂等（created=false，仍只有一行）', () => {
+  const s = scaffold();
+  const j = addJob(s.pid);
+  assert.equal(tj.linkTaskToJob({ taskId: s.tId, jobId: j }).created, true);
+  assert.equal(tj.linkTaskToJob({ taskId: s.tId, jobId: j }).created, false);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM render_task_jobs WHERE task_id=?').get(s.tId).n, 1);
+});
+
+test('J-08 已绑定其他 job 仍然拒绝（TASK_ALREADY_LINKED）', () => {
+  const s = scaffold();
+  const j1 = addJob(s.pid);
+  const j2 = addJob(s.pid);
+  tj.linkTaskToJob({ taskId: s.tId, jobId: j1 });
+  expectCode(() => tj.linkTaskToJob({ taskId: s.tId, jobId: j2 }), 'TASK_ALREADY_LINKED');
+  assert.equal(tj.jobOfTask(s.tId).job_id, j1);
+});
+
+test('J-09 Job / Task 不存在 → JOB_OR_TASK_NOT_FOUND', () => {
+  const s = scaffold();
+  expectCode(() => tj.linkTaskToJob({ taskId: s.tId, jobId: 'job_ghost' }), 'JOB_OR_TASK_NOT_FOUND');
+  const j = addJob(s.pid);
+  expectCode(() => tj.linkTaskToJob({ taskId: 't_ghost', jobId: j }), 'JOB_OR_TASK_NOT_FOUND');
+});

@@ -12,6 +12,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { initSchema, ensureColumn } from '../lib/core/db.js';
 import { initStage1Schema, stage1Status, stage1TableNames, stage1TablesByGroup } from '../lib/core/schema/index.js';
 import { STAGE1_INDEXES, STAGE1_TABLES } from '../lib/core/schema/tables.js';
+import { createMigrateStore } from '../lib/core/migrate/index.js';
 import { verify } from '../scripts/schema/verify-manifest.mjs';
 import { buildManifest } from '../scripts/schema/gen-manifest.mjs';
 
@@ -233,4 +234,93 @@ test('S-23 建表顺序表与 DDL 一一对应（不多不少）', () => {
 
 test.after(() => {
   try { fresh.raw.close(); } catch { /* 已关闭 */ }
+});
+
+// ── B-02：schema 初始化基线批次（V1.1 修复"只提供模型方法、没有接线"）─────
+// 基线记录的含义：这套 21 表结构已就位。所以它必须
+//   ① 在表与索引成功创建**之后**写；② 幂等（不是每天开一次应用就多一条）；③ 失败即抛出。
+function batchesOf(db) {
+  return db.raw.prepare('SELECT id,name,status,script_ver FROM migration_batches ORDER BY id').all();
+}
+
+test('B-01 全新库 initSchema 后存在 schema-init 基线，且 id 符合 mig-YYYYMMDD-00', () => {
+  const db = makeDb('baseline-fresh');
+  initSchema(db);
+  const rows = batchesOf(db);
+  assert.equal(rows.length, 1, '全新库应恰好一条基线');
+  assert.equal(rows[0].name, 'schema-init');
+  assert.equal(rows[0].status, 'committed');
+  assert.match(rows[0].id, /^mig-\d{8}-00$/);
+  const d = new Date();
+  const expect = `mig-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-00`;
+  assert.equal(rows[0].id, expect, '基线 id 应取当天日期 + 00');
+});
+
+test('B-02 重复 initSchema 不重复创建基线（同日与跨日都不新增）', () => {
+  const db = makeDb('baseline-idem');
+  initSchema(db);
+  initSchema(db);
+  initSchema(db);
+  assert.equal(batchesOf(db).length, 1, '同一天重复初始化只能有一条基线');
+
+  // 跨日也复用：直接调模型层换一个日期
+  const store = createMigrateStore(db);
+  const r = store.Batches.ensureBaseline({ date: new Date('2030-01-01T00:00:00Z'), scriptVer: 'x' });
+  assert.equal(r.created, false, '已有基线就复用，不按天新建');
+  assert.equal(r.reason, 'baseline_exists');
+  assert.equal(batchesOf(db).length, 1);
+});
+
+test('B-03 既有业务迁移批次不被覆盖，基线照常共存', () => {
+  const db = makeDb('baseline-coexist');
+  initSchema(db);
+  const t = Date.now();
+  db.raw.prepare(`INSERT INTO migration_batches (id,name,script_ver,status,source_counts,target_counts,backup_path,backup_sha256,rollback_preview,rollback_counts,note,started_at,finished_at,rolled_back_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run('mig-20260101-01', 'legacy-import', 'v1', 'committed', '{}', '{}', '', '', '', '{}', '', t, t, null);
+  initSchema(db);
+  const rows = batchesOf(db);
+  assert.equal(rows.length, 2, '业务批次与基线共存');
+  assert.equal(rows.find((r) => r.id === 'mig-20260101-01').name, 'legacy-import', '业务批次内容不得被改写');
+  assert.equal(rows.filter((r) => r.name === 'schema-init').length, 1);
+});
+
+test('B-04 -00 被非基线批次占用 → 抛 MIG_BASELINE_ID_TAKEN，不覆盖', () => {
+  const db = makeDb('baseline-taken');
+  db.exec('CREATE TABLE IF NOT EXISTS migration_batches (id TEXT PRIMARY KEY, name TEXT DEFAULT \'\', script_ver TEXT DEFAULT \'\', status TEXT DEFAULT \'staged\', source_counts TEXT DEFAULT \'{}\', target_counts TEXT DEFAULT \'{}\', backup_path TEXT DEFAULT \'\', backup_sha256 TEXT DEFAULT \'\', rollback_preview TEXT DEFAULT \'\', rollback_counts TEXT DEFAULT \'{}\', note TEXT DEFAULT \'\', started_at INTEGER, finished_at INTEGER, rolled_back_at INTEGER)');
+  const d = new Date();
+  const id = `mig-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-00`;
+  db.raw.prepare('INSERT INTO migration_batches (id,name,status,started_at) VALUES (?,?,?,?)').run(id, 'real-import', 'committed', Date.now());
+  try {
+    createMigrateStore(db).Batches.ensureBaseline({});
+    assert.fail('应抛 MIG_BASELINE_ID_TAKEN');
+  } catch (e) {
+    assert.equal(e.code, 'MIG_BASELINE_ID_TAKEN');
+  }
+  const rows = batchesOf(db);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'real-import', '不得覆盖既有批次');
+});
+
+test('B-05 建表中途失败 → initSchema 抛出，且不产生"成功基线"', () => {
+  const file = path.join(TMP, 'baseline-fail', 'ic.db');
+  fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const raw = new DatabaseSync(file);
+  const db = {
+    exec: (s) => {
+      // 模拟第 5 张表建表失败（migration_batches 已建、业务表未全）
+      if (/CREATE TABLE IF NOT EXISTS\s+shot_actions/.test(s)) throw new Error('模拟建表失败');
+      return raw.exec(s);
+    },
+    prepare: (s) => raw.prepare(s),
+    tableColumns: (t) => raw.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name),
+    dialect: 'sqlite',
+    raw,
+    file,
+  };
+  assert.throws(() => initSchema(db), /模拟建表失败/);
+  const n = raw.prepare('SELECT COUNT(*) n FROM migration_batches').get().n;
+  assert.equal(n, 0, '结构没建完就不许留下成功基线');
+  raw.close();
 });
