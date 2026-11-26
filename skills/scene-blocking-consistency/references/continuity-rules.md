@@ -47,6 +47,36 @@
   - 分镜一是角色 A 面向右说话，分镜二起幅写成 A 面向左 → 朝向跳变。
 - **续跑注意**：追加/续写新镜头时，用 `list_shots` 读回该章已有分镜，取最后一镜的落幅作为新镜头的起幅承接；若新镜头是新场景（转场），则跳过承接、重建站位表。
 
+## 7. 群体戏（三人以上）——本片五人码头戏的核心（H55 §5）
+
+> 三人以上轴线不止一条（A-B、B-C、A-C 构成三角形），双人规则直接套用会乱。补自 forest-laoli-h3 `spatial-anchor-and-hold.md §9.6` H55。
+
+- **先给一张 master wide（主全景）锚定所有人位置**——这是"观众地图"，后续所有紧景都从它定位。
+- **任何时刻只命名「当前活跃的一对（active pair）」**，这一对享受自己的轴线；其余人不享受轴线、只作前景/后景虚化。
+- **活跃配对一换，先回 master wide 重置观众地图，再切紧**——否则直接切到新一对的近景 = 变相越轴。
+
+## 8. 四种「合法越轴」（只这四种，且必须显式声明，否则就是穿帮）（H55 §6）
+
+| 方式 | 写法 |
+|---|---|
+| 镜头扫过（sweep） | `the camera sweeps across the axis in one unbroken move` |
+| 切中性镜（neutral） | 切一个正好在轴线上的镜头（正面/正背面），重置左右 |
+| 切回全景（wide reset） | 从新一侧先给全景，再切近 |
+| 有意越轴（剧情） | 情绪顶点/权力反转用，但必须配合中性镜或扫镜 |
+
+> 除此之外的任何"直接跳到轴线另一侧"都是穿帮，禁止。
+
+## 9. 英文机位/视线写法（写 video_prompt 时直接用）
+
+- 机位同侧：`the camera stays on the same side of the axis` + `never cross the axis`
+- 显式锁定视线方向（**优先于**"朝向成对"——先写屏幕方向，再补朝向成对）：
+  - A（左侧）：`profile view facing right, looking toward the right side of the screen`
+  - B（右侧）：`profile view facing left, looking toward the left side of the screen`
+  - 更精确：`character gaze directed at off-screen position, 15 degrees camera-left` / `looking directly camera-right at eye level`
+- 入场/退场方向连续：`exits frame right → enters the next shot from frame left`
+
+> **优先级（H55 §7）**：写视线先写"显式锁定视线方向"（`looking toward the right side of the screen`），再补"朝向成对呼应"。屏幕方向是硬证据，成对只是辅助。
+
 ## 自查清单（写完全部镜头后）
 
 - [ ] 每个场景都有站位表（空间锚点/角色站位/道具锚点/轴线机位）。
@@ -57,3 +87,6 @@
 - [ ] 对话双方视线方向相反且跨镜一致。
 - [ ] 关键道具方位一致；道具被移动时有镜头交代。
 - [ ] `video_prompt`（英文）里复述了站位与朝向，未与 `sub_shots` 矛盾。
+- [ ] 三人以上同场：先有 master wide 主全景锚定位，只命名「当前活跃一对」，换配对先回全景（§7）。
+- [ ] 越轴（若有）用了四式之一且显式声明（sweep / neutral / wide reset / 有意越轴）（§8）。
+- [ ] `video_prompt` 里写的是"屏幕方向"（`looking toward the right side of the screen`），不是笼统"看向对方"（§9）。
