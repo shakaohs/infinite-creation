@@ -26,7 +26,8 @@ const REAL_SHA_AT_START = fs.existsSync(REAL_DB) ? sha256(REAL_DB) : null;
 // 先拿 env-guard（此时 IC_DATA_DIR 可能是未设置状态），再设隔离目录后加载 core
 delete process.env.IC_DATA_DIR;
 delete process.env.IC_DB_SQLITE_PATH;
-const { assertEnv, assertStage0Env, assertDbIsolation } = await import('../lib/core/env-guard.js');
+const guardMod = await import('../lib/core/env-guard.js');
+const { assertEnv, assertStage0Env, assertDbIsolation } = guardMod;
 
 process.env.IC_DATA_DIR = FRESH;
 const dbMod = await import('../lib/core/db.js');
@@ -429,4 +430,128 @@ test('A-01-13 链接链 a→b→外部 必须跟到底；a↔b 循环报 PATH_SY
     () => assertDbIsolation({ dataDir: iso, dbPath: x, purpose: 'A-01-13 loop' }),
     (e) => e.code === 'PATH_SYMLINK_LOOP',
   );
+});
+
+// ── A-01 解析失败必须拒（第三轮复核）：真实 FS 几乎造不出"能 lstat 不能 readlink"，用注入 ──
+// 注入只换 io 实现，判定逻辑一字不改；真实文件系统的链接用例（A-01-4/6/8~13）仍在跑。
+function fakeIo({ onLstat, onReadlink } = {}) {
+  return {
+    lstatSync: (p) => (onLstat ? onLstat(p) : { isSymbolicLink: () => false }),
+    readlinkSync: (p) => (onReadlink ? onReadlink(p) : ''),
+    realpathSync: (p) => p,
+  };
+}
+const isDbFile = (p) => path.basename(p).toLowerCase() === 'ic.db';
+
+test('A-01-14 能识别为链接但读不出目标 → PATH_SYMLINK_UNRESOLVED，且不返回"看似合法"的路径', () => {
+  const iso = path.join(BASE, 'a01-unresolved', 'iso');
+  const dbPath = path.join(iso, 'ic.db');
+  const io = fakeIo({
+    onLstat: (p) => (isDbFile(p) ? { isSymbolicLink: () => true } : { isSymbolicLink: () => false }),
+    onReadlink: () => {
+      const e = new Error('EACCES: permission denied, readlink');
+      e.code = 'EACCES';
+      throw e;
+    },
+  });
+
+  let detail = null;
+  assert.throws(
+    () => assertDbIsolation({ dataDir: iso, dbPath, purpose: 'A-01-14', io }),
+    (e) => {
+      detail = e;
+      return e.code === 'PATH_SYMLINK_UNRESOLVED';
+    },
+    '读不出链接目标时不得按"链接所在位置"判为合法',
+  );
+  assert.equal(detail.detail.path, dbPath, '错误详情应带当前路径');
+  assert.equal(detail.detail.code, 'EACCES', '错误详情应带底层错误码');
+  assert.ok(String(detail.detail.target).includes('ic.db'), '错误详情应带原始目标路径');
+
+  // 也不能悄悄放过：resolvePathDetail 同样必须抛，而不是回退成原路径
+  const { resolvePathDetail } = guardMod;
+  assert.throws(() => resolvePathDetail(dbPath, io), (e) => e.code === 'PATH_SYMLINK_UNRESOLVED');
+});
+
+test('A-01-15 lstat 抛 EACCES/EPERM → PATH_RESOLUTION_FAILED；ENOENT/ENOTDIR 仍按不存在放行', () => {
+  const iso = path.join(BASE, 'a01-eacces', 'iso');
+  const dbPath = path.join(iso, 'ic.db');
+
+  for (const code of ['EACCES', 'EPERM', 'ELOOP', 'EIO']) {
+    const io = fakeIo({
+      onLstat: (p) => {
+        if (!isDbFile(p)) return { isSymbolicLink: () => false };
+        const e = new Error(`${code}: cannot access`);
+        e.code = code;
+        throw e;
+      },
+    });
+    assert.throws(
+      () => assertDbIsolation({ dataDir: iso, dbPath, purpose: 'A-01-15', io }),
+      (e) => e.code === 'PATH_RESOLUTION_FAILED' && e.detail.code === code,
+      `${code} 不得被当成"路径不存在"`,
+    );
+  }
+
+  // 反向断言：ENOENT / ENOTDIR 必须仍然放行（正常"库还没建"就靠这条）
+  for (const code of ['ENOENT', 'ENOTDIR']) {
+    const io = fakeIo({
+      onLstat: (p) => {
+        if (!isDbFile(p)) return { isSymbolicLink: () => false };
+        const e = new Error(`${code}: no such entry`);
+        e.code = code;
+        throw e;
+      },
+    });
+    const r = assertDbIsolation({ dataDir: iso, dbPath, purpose: 'A-01-15 ok', io });
+    assert.equal(r.enforced, true, `${code} 应视为"尚未创建"，不得拒绝`);
+    assert.equal(path.basename(r.dbPath), 'ic.db');
+  }
+});
+
+test('A-01-16 五级尚不存在的隔离目录 + 默认库路径 → 放行、建库、且是普通文件', () => {
+  const iso = path.join(BASE, 'a01-deep', 'x', 'y', 'z', 'w');
+  const r = runProbe({ IC_DATA_DIR: iso });
+  assert.equal(r.ok, true, '合法隔离目录不得被误拒：' + r.message);
+  assert.equal(path.resolve(r.sqlitePath), path.resolve(path.join(iso, 'ic.db')));
+  assert.equal(r.dbExists, true);
+  assert.equal(fs.lstatSync(path.join(iso, 'ic.db')).isSymbolicLink(), false, '建出的必须是普通文件');
+  assert.equal(fs.lstatSync(path.join(iso, 'ic.db')).isFile(), true);
+});
+
+test('A-01-17 隔离矩阵回归：四类绕过在真实文件系统上仍全部被拒且不落文件', (t) => {
+  const root = path.join(BASE, 'a01-matrix');
+  const iso = path.join(root, 'iso');
+  const outsideDir = path.join(root, 'outside');
+  fs.mkdirSync(iso, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+
+  // ① IC_DB_SQLITE_PATH 指外部
+  const p1 = path.join(outsideDir, 'env.db');
+  assert.equal(runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: p1 }).code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(p1), false);
+
+  // ② config.json 的 db.sqlite.path 指外部
+  const p2 = path.join(outsideDir, 'cfg.db');
+  const cfgFile = path.join(root, 'cfg.json');
+  fs.writeFileSync(cfgFile, JSON.stringify({ db: { provider: 'sqlite', sqlite: { path: p2 } } }), 'utf8');
+  assert.equal(runProbe({ IC_DATA_DIR: iso, IC_CONFIG: cfgFile }).code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(p2), false);
+
+  // ③ 悬空文件软链 → 外部
+  const danglingLink = path.join(iso, 'dangling.db');
+  const p3 = path.join(outsideDir, 'dangling.db');
+  if (!tryFileLink(p3, danglingLink)) { t.skip('当前环境不允许创建文件符号链接'); return; }
+  assert.equal(runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: danglingLink }).code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(p3), false);
+
+  // ④ 目录 junction → 外部
+  const jdir = path.join(iso, 'jdir');
+  if (!tryLink(outsideDir, jdir)) { t.skip('当前环境不允许创建目录符号链接'); return; }
+  assert.equal(runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: path.join(jdir, 'dir.db') }).code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(path.join(outsideDir, 'dir.db')), false);
+
+  // ⑤ 同一隔离目录在没有任何绕过时仍能建库（证明上面四条不是因为"全都拒"才通过）
+  const ok = runProbe({ IC_DATA_DIR: iso });
+  assert.equal(ok.ok, true, '合法路径必须放行：' + ok.message);
 });
