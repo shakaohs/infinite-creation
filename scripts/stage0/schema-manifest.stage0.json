@@ -1,0 +1,396 @@
+{
+  "version": 1,
+  "scope": "stage0",
+  "generatedAt": "2026-11-26T06:31:07.920Z",
+  "generatedFrom": "scripts/stage0/gen-manifest.mjs（空库执行 initSchema 后导出）",
+  "rules": [
+    "校验按列名集合比对：missing = expect - actual 必须为空；extra - tolerate_extra 必须为空；",
+    "extra ∩ tolerate_extra 只记 INFO（历史遗留列，允许存在但不参与读写）；",
+    "禁止用列数相等作为通过判据。"
+  ],
+  "tables": {
+    "assets": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "project_id",
+        "category",
+        "name",
+        "parent_id",
+        "description",
+        "voice_desc",
+        "voice_desc_used",
+        "prompt",
+        "prompt_used",
+        "prompt_locked",
+        "lyrics",
+        "max_duration",
+        "negative_prompt",
+        "voice_ref",
+        "image_path",
+        "audio_path",
+        "video_path",
+        "source",
+        "consistency_key",
+        "versions",
+        "params",
+        "status",
+        "error",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    },
+    "change_logs": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "project_id",
+        "batch_id",
+        "ts",
+        "source",
+        "entity",
+        "entity_id",
+        "action",
+        "before",
+        "after",
+        "revert_of",
+        "reverted_by",
+        "meta"
+      ],
+      "tolerate_extra": []
+    },
+    "chapters": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "project_id",
+        "title",
+        "novel",
+        "script",
+        "seq",
+        "volume",
+        "outline",
+        "status",
+        "music_path",
+        "music_prompt",
+        "music_prompt_used",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    },
+    "jobs": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "project_id",
+        "type",
+        "status",
+        "phase",
+        "detail",
+        "progress",
+        "checkpoint",
+        "log_path",
+        "error",
+        "started_at",
+        "finished_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    },
+    "messages": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "project_id",
+        "job_id",
+        "seq",
+        "role",
+        "content",
+        "created_at"
+      ],
+      "tolerate_extra": []
+    },
+    "projects": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "name",
+        "type",
+        "novel",
+        "idea",
+        "style",
+        "video_resolution",
+        "video_aspect_ratio",
+        "video_width",
+        "video_height",
+        "image_resolution",
+        "video_model",
+        "seam",
+        "target_duration",
+        "context",
+        "status",
+        "enable_bgm",
+        "enable_subtitles",
+        "auto_script",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    },
+    "queue_items": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "job_id",
+        "project_id",
+        "owner_id",
+        "pool",
+        "kind",
+        "status",
+        "priority",
+        "seq",
+        "attempts",
+        "max_attempts",
+        "not_before",
+        "lease_until",
+        "worker_id",
+        "remote_task_id",
+        "dedupe_key",
+        "payload",
+        "last_error",
+        "amount",
+        "unit_price",
+        "currency",
+        "enqueued_at",
+        "started_at",
+        "finished_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    },
+    "reference_images": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "project_id",
+        "chapter_id",
+        "asset_id",
+        "name",
+        "image_path",
+        "mode",
+        "category",
+        "description",
+        "created_at",
+        "shared",
+        "origin"
+      ],
+      "tolerate_extra": []
+    },
+    "shot_videos": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "project_id",
+        "shot_id",
+        "idx",
+        "video_path",
+        "seed",
+        "selected",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    },
+    "shots": {
+      "kind": "legacy",
+      "expect": [
+        "id",
+        "project_id",
+        "idx",
+        "chapter",
+        "scene_name",
+        "camera",
+        "visual",
+        "dialogue",
+        "narration",
+        "sub_shots",
+        "blocking",
+        "prompt_id",
+        "duration",
+        "character_ids",
+        "scene_ids",
+        "prop_ids",
+        "costume_ids",
+        "age_ids",
+        "audio_ids",
+        "refs",
+        "resolution",
+        "aspect_ratio",
+        "mode",
+        "video_prompt",
+        "video_prompt_used",
+        "video_path",
+        "first_frame_path",
+        "last_frame_path",
+        "reference_image_path",
+        "seed",
+        "status",
+        "error",
+        "parent_shot_id",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra": [
+        "seam",
+        "storyboard_sheet"
+      ]
+    },
+    "skills": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "name",
+        "description",
+        "version",
+        "source",
+        "enabled",
+        "path",
+        "manifest",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    },
+    "workflows": {
+      "kind": "existing",
+      "expect": [
+        "id",
+        "name",
+        "kind",
+        "source_file",
+        "spec",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra": []
+    }
+  },
+  "pending": {
+    "scene_states": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "story_shots": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "shot_blockings": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "shot_actions": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "shot_states": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "shot_assets": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "render_adaptations": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "render_units": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "render_unit_shots": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "prompt_packages": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "render_tasks": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "render_attempts": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "qc_reports": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "timelines": {
+      "kind": "biz",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "migration_batches": {
+      "kind": "ops",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "migration_items": {
+      "kind": "ops",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "migration_edges": {
+      "kind": "ops",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    },
+    "legacy_artifacts": {
+      "kind": "archive",
+      "status": "NOT_READY",
+      "stage": 1,
+      "note": "阶段 1 建表后才可写入 expect 列清单"
+    }
+  },
+  "summary": {
+    "existingTables": 12,
+    "shotsColumns": 35,
+    "pendingD01Tables": 18
+  }
+}
