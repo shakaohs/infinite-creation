@@ -26,7 +26,7 @@ const REAL_SHA_AT_START = fs.existsSync(REAL_DB) ? sha256(REAL_DB) : null;
 // 先拿 env-guard（此时 IC_DATA_DIR 可能是未设置状态），再设隔离目录后加载 core
 delete process.env.IC_DATA_DIR;
 delete process.env.IC_DB_SQLITE_PATH;
-const { assertEnv, assertStage0Env } = await import('../lib/core/env-guard.js');
+const { assertEnv, assertStage0Env, assertDbIsolation } = await import('../lib/core/env-guard.js');
 
 process.env.IC_DATA_DIR = FRESH;
 const dbMod = await import('../lib/core/db.js');
@@ -318,4 +318,115 @@ test('A-01-7 相对路径 → 拒绝', () => {
   const r = runProbe({ IC_DATA_DIR: 'relative/dir' });
   assert.equal(r.ok, false);
   assert.equal(r.code, 'IC_DATA_DIR_NOT_ABSOLUTE');
+});
+
+// ── A-01 悬空文件符号链接（第二轮复核: existsSync 判不出"目标不存在的链接"） ──────
+// 每条用例仍在独立进程里跑；链接必须建在隔离目录**内**，目标在隔离目录**外**。
+function tryFileLink(target, link) {
+  try { fs.symlinkSync(target, link, 'file'); return true; } catch { return false; }
+}
+
+test('A-01-8 文件软链指向外部已存在文件 → 拒绝，且外部文件内容未被改动', (t) => {
+  const iso = path.join(BASE, 'a01-filelink-exist', 'iso');
+  const outsideDir = path.join(BASE, 'a01-filelink-exist', 'outside');
+  fs.mkdirSync(iso, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+  const target = path.join(outsideDir, 'victim.db');
+  fs.writeFileSync(target, 'ORIGINAL-NOT-A-DATABASE');
+  const link = path.join(iso, 'ic.db');
+  if (!tryFileLink(target, link)) { t.skip('当前环境不允许创建文件符号链接（Windows 需管理员或开发者模式）'); return; }
+
+  const r = runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: link });
+  assert.equal(r.ok, false, '指向外部的文件软链必须被拒绝');
+  assert.equal(r.code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.readFileSync(target, 'utf8'), 'ORIGINAL-NOT-A-DATABASE', '拒绝必须发生在打开之前：外部文件一个字节都不许动');
+});
+
+test('A-01-9 文件软链指向外部尚不存在的文件（悬空链接）→ 拒绝，且外部文件未被创建', (t) => {
+  const iso = path.join(BASE, 'a01-filelink-dangling', 'iso');
+  const outsideDir = path.join(BASE, 'a01-filelink-dangling', 'outside');
+  fs.mkdirSync(iso, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+  const target = path.join(outsideDir, 'escaped.db');
+  const link = path.join(iso, 'ic.db');
+  if (!tryFileLink(target, link)) { t.skip('当前环境不允许创建文件符号链接（Windows 需管理员或开发者模式）'); return; }
+
+  assert.equal(fs.existsSync(link), false, '前提：悬空链接在 existsSync 下就是 false（旧实现的判断依据）');
+  const r = runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: link });
+  assert.equal(r.ok, false, '悬空文件软链同样必须被拒绝');
+  assert.equal(r.code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(target), false, '外部目标文件不得被创建（SQLite 不得跟随链接在隔离目录外建库）');
+});
+
+test('A-01-10 相对目标的悬空链接（../outside/x.db）→ 按链接目标拒绝，外部不落文件', (t) => {
+  const root = path.join(BASE, 'a01-filelink-relative');
+  const iso = path.join(root, 'iso');
+  const outsideDir = path.join(root, 'outside-rel');
+  fs.mkdirSync(iso, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+  const link = path.join(iso, 'ic.db');
+  if (!tryFileLink(path.join('..', 'outside-rel', 'escaped.db'), link)) { t.skip('当前环境不允许创建文件符号链接'); return; }
+
+  const r = runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: link });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(path.join(outsideDir, 'escaped.db')), false, '相对链接也必须按目标判定');
+});
+
+test('A-01-11 多级尚不存在的隔离目录 + 默认库路径 → 仍然放行并建库（不过度收紧）', () => {
+  const iso = path.join(BASE, 'a01-nested', 'a', 'b', 'c');
+  const r = runProbe({ IC_DATA_DIR: iso });
+  assert.equal(r.ok, true, '合法隔离目录不得被误拒：' + r.message);
+  assert.equal(path.resolve(r.sqlitePath), path.resolve(path.join(iso, 'ic.db')));
+  assert.equal(r.dbExists, true);
+  assert.equal(fs.lstatSync(path.join(iso, 'ic.db')).isSymbolicLink(), false, '正常建库不应产生链接');
+});
+
+// ── 解析器本身的边界（不经环境变量：直接喂原始路径给 assertDbIsolation） ─────────
+test('A-01-12 链接后接 `..` 的逃逸（iso/jdir/../ic.db，jdir 指向外部）→ 按物理解析拒绝', (t) => {
+  const root = path.join(BASE, 'a01-link-dotdot');
+  const iso = path.join(root, 'iso');
+  const outsideDir = path.join(root, 'outside');
+  fs.mkdirSync(iso, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+  const jdir = path.join(iso, 'jdir');
+  if (!tryLink(outsideDir, jdir)) { t.skip('当前环境不允许创建目录符号链接'); return; }
+
+  // 必须用字符串拼接：path.join(iso,'jdir','..','ic.db') 会先词法折叠成 iso/ic.db，
+  // 那样测到的是 path.join，不是解析器。OS 的语义是"先跟随 jdir，再 .."，落点在 root/ic.db。
+  const raw = iso + path.sep + 'jdir' + path.sep + '..' + path.sep + 'ic.db';
+  assert.throws(
+    () => assertDbIsolation({ dataDir: iso, dbPath: raw, purpose: 'A-01-12' }),
+    (e) => e.code === 'IC_DB_PATH_OUTSIDE_DATA_DIR',
+    '词法折叠会把这个路径洗成 iso/ic.db，物理解析必须落回 root/ic.db 并拒绝',
+  );
+});
+
+test('A-01-13 链接链 a→b→外部 必须跟到底；a↔b 循环报 PATH_SYMLINK_LOOP', (t) => {
+  const root = path.join(BASE, 'a01-chain');
+  const iso = path.join(root, 'iso');
+  const outsideDir = path.join(root, 'outside');
+  fs.mkdirSync(iso, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+
+  // 链：a.db → b.db → 外部/chain.db（两级链接，只解析一层会误判成"内部"）
+  const a = path.join(iso, 'a.db');
+  const b = path.join(iso, 'b.db');
+  if (!tryFileLink(b, a) || !tryFileLink(path.join(outsideDir, 'chain.db'), b)) {
+    t.skip('当前环境不允许创建文件符号链接'); return;
+  }
+  assert.throws(
+    () => assertDbIsolation({ dataDir: iso, dbPath: a, purpose: 'A-01-13 chain' }),
+    (e) => e.code === 'IC_DB_PATH_OUTSIDE_DATA_DIR',
+    '链接必须递归解析到最终目标，否则会被当成隔离目录内的普通文件',
+  );
+
+  // 环：x ↔ y（读到读不到都不许挂起，也不许当成内部）
+  const x = path.join(iso, 'x.db');
+  const y = path.join(iso, 'y.db');
+  if (!tryFileLink(y, x) || !tryFileLink(x, y)) { t.skip('当前环境不允许创建第二组文件符号链接'); return; }
+  assert.throws(
+    () => assertDbIsolation({ dataDir: iso, dbPath: x, purpose: 'A-01-13 loop' }),
+    (e) => e.code === 'PATH_SYMLINK_LOOP',
+  );
 });
