@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 
 const BASE = fs.mkdtempSync(path.join(os.tmpdir(), 'ic-stage0-'));
@@ -153,11 +154,23 @@ test('T-06 备份恢复：删除测试库后从备份恢复，行数一致；T-0
 });
 
 // ── T-08 ────────────────────────────────────────────────────────────────
-test('T-08 历史库结构核对：复制真库后 initSchema，不丢 seam / storyboard_sheet，blocking 数据不丢', (t) => {
+test('T-08 历史库结构核对：VACUUM INTO 取一致副本后 initSchema，不丢历史列 / blocking / 行数', (t) => {
   if (!fs.existsSync(REAL_DB)) { t.skip('真实库 data/ic.db 不存在，跳过'); return; }
   const copyDir = path.join(BASE, 'legacy'); fs.mkdirSync(copyDir, { recursive: true });
   const copy = path.join(copyDir, 'ic.db');
-  fs.copyFileSync(REAL_DB, copy);
+
+  // 只读打开真库 → VACUUM INTO 生成一致快照（B-01）。
+  // 直接 copyFileSync 在 WAL 模式下可能漏掉 -wal 里已提交的页：副本"少几个事务"，
+  // 而结构核对恰恰要以"完整的历史库"为前提，否则等于拿残缺样本证明没丢列。
+  const ro = new DatabaseSync(REAL_DB, { readOnly: true });
+  ro.exec(`VACUUM INTO '${copy.replace(/\\/g, '/').replace(/'/g, "''")}'`);
+  const realCounts = {
+    shots: ro.prepare('SELECT COUNT(*) AS n FROM shots').get().n,
+    chapters: ro.prepare('SELECT COUNT(*) AS n FROM chapters').get().n,
+    assets: ro.prepare('SELECT COUNT(*) AS n FROM assets').get().n,
+    blocking: ro.prepare("SELECT COUNT(*) AS n FROM shots WHERE blocking <> ''").get().n,
+  };
+  ro.close();
 
   const raw = new DatabaseSync(copy);
   const db = {
@@ -168,6 +181,10 @@ test('T-08 历史库结构核对：复制真库后 initSchema，不丢 seam / st
   const beforeCols = db.tableColumns('shots');
   const beforeRows = raw.prepare("SELECT COUNT(*) AS n FROM shots WHERE blocking <> ''").get().n;
 
+  // 副本行数必须与真库一致（证明快照完整，而不是"少几页也能跑"）
+  assert.equal(raw.prepare('SELECT COUNT(*) AS n FROM shots').get().n, realCounts.shots, '副本 shots 行数应与真库一致');
+  assert.equal(beforeRows, realCounts.blocking, '副本 blocking 非空数应与真库一致');
+
   initSchema(db); // 历史库上跑迁移：不该删列、不该重复加列
   initSchema(db);
 
@@ -177,6 +194,7 @@ test('T-08 历史库结构核对：复制真库后 initSchema，不丢 seam / st
   assert.ok(afterCols.includes('storyboard_sheet'), 'storyboard_sheet 历史列不得被删除');
   assert.ok(afterCols.includes('blocking'), 'blocking 列必须存在');
   assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM shots WHERE blocking <> ''").get().n, beforeRows, 'blocking 数据不得被覆盖');
+  assert.equal(raw.prepare('SELECT COUNT(*) AS n FROM shots').get().n, realCounts.shots, '迁移后行数不得变化');
   assert.equal(raw.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
   raw.close();
 });
@@ -210,4 +228,94 @@ test('T-05b Manifest：新库 PASS；历史库副本 PASS 且 seam/storyboard_sh
   assert.equal(r.ok, true, '历史库副本 manifest 校验应 PASS');
   assert.deepEqual(shotsLegacy.tolerated.sort(), ['seam', 'storyboard_sheet'], '历史列应被记为 tolerated 而不是 unknownExtra');
   assert.equal(shotsLegacy.columnCount, 37);
+});
+
+// ── A-01 数据库隔离矩阵（每条场景起独立进程：config 在加载时固化路径） ──────
+const PROBE = path.resolve('tests', 'helpers', 'db-guard-probe.mjs');
+
+function runProbe(overrides = {}) {
+  const env = { ...process.env };
+  for (const k of ['IC_DATA_DIR', 'IC_DB_SQLITE_PATH', 'IC_CONFIG', 'IC_DB', 'DATABASE_URL']) delete env[k];
+  Object.assign(env, overrides);
+  const r = spawnSync(process.execPath, [PROBE], { env, encoding: 'utf8', cwd: process.cwd() });
+  const line = String(r.stdout || '').split('\n').filter((l) => l.startsWith('PROBE ')).pop();
+  assert.ok(line, '探针未输出结果：' + String(r.stderr || '').slice(0, 400));
+  return JSON.parse(line.slice(6));
+}
+
+// Windows 上目录软链需要额外权限，junction 不需要；两者都不行时返回 false 由用例 skip
+function tryLink(target, link) {
+  try { fs.symlinkSync(target, link, 'junction'); return true; } catch { /* 落到下面 */ }
+  try { fs.symlinkSync(target, link, 'dir'); return true; } catch { return false; }
+}
+
+test('A-01-1 正常隔离目录：放行，且实际库文件落在隔离目录内', () => {
+  const iso = path.join(BASE, 'a01-ok');
+  const r = runProbe({ IC_DATA_DIR: iso });
+  assert.equal(r.ok, true, '应放行：' + r.message);
+  assert.equal(r.sqlitePathSource, 'default:DATA_DIR/ic.db');
+  assert.equal(path.resolve(r.sqlitePath), path.resolve(path.join(iso, 'ic.db')));
+  assert.equal(r.dbExists, true, '放行后应真的建出库文件');
+});
+
+test('A-01-2 IC_DB_SQLITE_PATH 指向隔离目录之外 → 打开前拒绝，且不产生文件', () => {
+  const iso = path.join(BASE, 'a01-envpath');
+  const outside = path.join(BASE, 'outside-env', 'ic.db');
+  const r = runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: outside });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(outside), false, '拒绝必须发生在建库之前（外部路径不许出现文件）');
+});
+
+test('A-01-3 config.json 的 db.sqlite.path 指向隔离目录之外 → 同样拒绝', () => {
+  const iso = path.join(BASE, 'a01-cfgpath');
+  const outside = path.join(BASE, 'outside-cfg', 'ic.db');
+  const cfgFile = path.join(BASE, 'cfg-external.json');
+  fs.writeFileSync(cfgFile, JSON.stringify({ db: { provider: 'sqlite', sqlite: { path: outside } } }), 'utf8');
+  const r = runProbe({ IC_DATA_DIR: iso, IC_CONFIG: cfgFile });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(r.sqlitePathSource === 'config:db.sqlite.path' || r.ok === false, true);
+  assert.equal(fs.existsSync(outside), false, '拒绝必须发生在建库之前');
+});
+
+test('A-01-4 隔离目录内的符号链接指向外部 → 按真实路径拒绝', (t) => {
+  const iso = path.join(BASE, 'a01-link');
+  const outsideDir = path.join(BASE, 'outside-link');
+  fs.mkdirSync(iso, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+  const link = path.join(iso, 'escape');
+  if (!tryLink(outsideDir, link)) { t.skip('当前环境不允许创建目录符号链接'); return; }
+
+  const target = path.join(link, 'ic.db');
+  const r = runProbe({ IC_DATA_DIR: iso, IC_DB_SQLITE_PATH: target });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'IC_DB_PATH_OUTSIDE_DATA_DIR');
+  assert.equal(fs.existsSync(path.join(outsideDir, 'ic.db')), false, '符号链接外部的库文件不得被创建');
+});
+
+test('A-01-5 生产目录及其子目录 → 拒绝（IS_DEFAULT / INSIDE_PRODUCTION）', () => {
+  const prod = path.resolve('data');
+  const r1 = runProbe({ IC_DATA_DIR: prod });
+  assert.equal(r1.ok, false);
+  assert.equal(r1.code, 'IC_DATA_DIR_IS_DEFAULT');
+
+  const r2 = runProbe({ IC_DATA_DIR: path.join(prod, 'projects') });
+  assert.equal(r2.ok, false);
+  assert.equal(r2.code, 'IC_DATA_DIR_INSIDE_PRODUCTION');
+});
+
+test('A-01-6 IC_DATA_DIR 是指向生产目录的符号链接 → 按真实路径拒绝', (t) => {
+  const prod = path.resolve('data');
+  const link = path.join(BASE, 'prod-link');
+  if (!tryLink(prod, link)) { t.skip('当前环境不允许创建目录符号链接'); return; }
+  const r = runProbe({ IC_DATA_DIR: link });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'IC_DATA_DIR_SYMLINK_TO_PRODUCTION');
+});
+
+test('A-01-7 相对路径 → 拒绝', () => {
+  const r = runProbe({ IC_DATA_DIR: 'relative/dir' });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'IC_DATA_DIR_NOT_ABSOLUTE');
 });
