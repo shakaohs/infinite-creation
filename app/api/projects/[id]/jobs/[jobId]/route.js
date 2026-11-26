@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Jobs, loadConfig, interruptTask, projectDir } from '@/lib/core/index.js';
+import { Jobs, loadConfig, interruptTask, projectDir, tx, deleteJobWithArchive } from '@/lib/core/index.js';
 import { stopJob, holdsRenderSlot } from '@/lib/agent/index.js';
 
 export const dynamic = 'force-dynamic';
@@ -25,9 +25,11 @@ export async function DELETE(_req, { params }) {
   }
   if (running || queued) stopJob(jobId);
   if (running) { try { const cfg = loadConfig(); await interruptTask(cfg); } catch {} }
+  // 阶段 1：物理删除 = 归档 job 摘要 → 删关系 → 删行，三步同一事务；
+  // 文件清理放在事务之后（文件系统不在事务里，先删文件后回滚会留下"记录还在、日志没了"）。
+  tx(() => deleteJobWithArchive(jobId));
   // 清掉任务级日志文件
   try { fs.unlinkSync(path.join(projectDir(id), 'logs', jobId + '.log')); } catch {}
   if (job.logPath) { try { fs.unlinkSync(job.logPath); } catch {} }
-  Jobs.remove(jobId);
   return NextResponse.json({ ok: true, cancelled: running || queued, id: jobId });
 }

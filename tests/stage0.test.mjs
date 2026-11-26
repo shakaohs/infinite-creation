@@ -215,11 +215,19 @@ test('T-05b Manifest：新库 PASS；历史库副本 PASS 且 seam/storyboard_sh
   if (!fs.existsSync(MANIFEST)) { t.skip('manifest 未生成，先跑 scripts/stage0/gen-manifest.mjs'); return; }
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
 
+  // 阶段 1 起 `projects` 增加 `structured_spec`（D02-03 V3 §六 D-05）。
+  // 阶段 0 的这份快照是"历史证据"、冻结不更新，所以在内存里补一条容忍，
+  // 并**显式断言多出来的恰好是这一列**——这是把变化写清楚，不是放宽标准。
+  manifest.tables.projects.tolerate_extra = ['structured_spec'];
+
   const fresh = verifyManifest(path.join(FRESH, 'ic.db'), manifest);
   assert.equal(fresh.ok, true, '新库 manifest 校验应 PASS：' + JSON.stringify(fresh.tables.filter((x) => x.status === 'FAIL')));
   const shotsFresh = fresh.tables.find((x) => x.table === 'shots');
   assert.equal(shotsFresh.columnCount, 35);
   assert.deepEqual(shotsFresh.tolerated, [], '新库不应出现历史遗留列');
+  const projFresh = fresh.tables.find((x) => x.table === 'projects');
+  assert.deepEqual(projFresh.tolerated, ['structured_spec'], '阶段 1 起 projects 必须恰好多这一列');
+  assert.equal(projFresh.columnCount, 22);
 
   if (!fs.existsSync(REAL_DB)) return;
   const legacyCopy = path.join(BASE, 'legacy', 'ic.db');

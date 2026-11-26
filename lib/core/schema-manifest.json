@@ -1,0 +1,575 @@
+{
+  "version": 1,
+  "source": {
+    "d01_05": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+    "d02_01": "docs/D02/D02-01-工程实施总体方案.md",
+    "d02_03": "docs/D02/D02-03-阶段1前置设计决策记录.md",
+    "db_js": "lib/core/db.js",
+    "generatedFrom": "frozen DDL text only, never the database"
+  },
+  "generatedAt": "",
+  "counts": {
+    "ops": 3,
+    "archive": 1,
+    "biz": 14,
+    "d02_ext": 3,
+    "groups_total": 21,
+    "existing": 2,
+    "entries_total": 23
+  },
+  "groups": {
+    "ops": {
+      "migration_batches": {
+        "kind": "ops",
+        "source": "docs/D02/D02-01-工程实施总体方案.md",
+        "expected_columns": [
+          "id",
+          "name",
+          "script_ver",
+          "status",
+          "source_counts",
+          "target_counts",
+          "backup_path",
+          "backup_sha256",
+          "rollback_preview",
+          "rollback_counts",
+          "note",
+          "started_at",
+          "finished_at",
+          "rolled_back_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "migration_items": {
+        "kind": "ops",
+        "source": "docs/D02/D02-01-工程实施总体方案.md",
+        "expected_columns": [
+          "batch_id",
+          "target_table",
+          "target_pk",
+          "source_table",
+          "source_pk",
+          "source_kind",
+          "migrated_content_hash",
+          "migration_status",
+          "rollback_status",
+          "rollback_reason",
+          "protected_at",
+          "confidence",
+          "reason",
+          "created_at",
+          "updated_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "migration_edges": {
+        "kind": "ops",
+        "source": "docs/D02/D02-01-工程实施总体方案.md",
+        "expected_columns": [
+          "batch_id",
+          "child_table",
+          "child_pk",
+          "parent_table",
+          "parent_pk",
+          "edge_kind",
+          "created_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      }
+    },
+    "archive": {
+      "legacy_artifacts": {
+        "kind": "archive",
+        "source": "docs/D02/D02-01-工程实施总体方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "source_table",
+          "source_pk",
+          "artifact_kind",
+          "resolved_track",
+          "resolved_profile_ver",
+          "resolve_basis",
+          "body",
+          "content_hash",
+          "note",
+          "created_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      }
+    },
+    "biz": {
+      "scene_states": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "scene_key",
+          "scene_id",
+          "coord_system",
+          "fixtures",
+          "entries",
+          "axis_lock",
+          "power_geometry",
+          "crowd_switch",
+          "time_of_day",
+          "state_rev",
+          "created_at",
+          "updated_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "story_shots": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "chapter_id",
+          "scene_key",
+          "scene_id",
+          "shot_no",
+          "global_no",
+          "beat_key",
+          "prev_shot_id",
+          "purpose",
+          "dramatic_value",
+          "info_delta",
+          "dialogue_function",
+          "is_insert",
+          "visual_content",
+          "composition",
+          "lighting",
+          "shot_size",
+          "cam_direction",
+          "cam_height",
+          "cam_roll_deg",
+          "cam_pos",
+          "cam_target",
+          "cam_distance_m",
+          "lens_mm",
+          "fov_deg",
+          "movement",
+          "movement_amp",
+          "cam_path",
+          "composition_rule",
+          "cam_note",
+          "dialogue",
+          "speakers",
+          "narration",
+          "sfx",
+          "music_cue",
+          "voice_ids",
+          "story_duration",
+          "time_slices",
+          "speed_ramp",
+          "is_cut_point",
+          "time_jump",
+          "spec_version",
+          "spec_source",
+          "fill_confidence",
+          "qc_status",
+          "created_at",
+          "updated_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "shot_blockings": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "shot_id",
+          "character_id",
+          "position_abs",
+          "norm_x",
+          "norm_y",
+          "norm_z",
+          "norm_confidence",
+          "position_track",
+          "anchor_object",
+          "behind_object",
+          "facing",
+          "gaze_target",
+          "posture",
+          "distance_to_camera",
+          "occlusion",
+          "hand_state",
+          "current_task",
+          "in_frame",
+          "power_level",
+          "instance_anchor"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "shot_actions": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "shot_id",
+          "actor_id",
+          "action_type",
+          "is_primary",
+          "tier",
+          "init_state",
+          "trigger_json",
+          "path_json",
+          "force_json",
+          "speed_json",
+          "power",
+          "cog",
+          "body_parts",
+          "contact_json",
+          "result_json",
+          "follow_through",
+          "recovery",
+          "end_state",
+          "sync_json",
+          "t_from",
+          "t_to"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "shot_states": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "shot_id",
+          "state_in",
+          "state_out",
+          "meta",
+          "derived_from",
+          "state_source",
+          "conflicts",
+          "updated_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "shot_assets": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "shot_id",
+          "asset_id",
+          "role",
+          "order_no",
+          "variant_of"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "render_adaptations": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "chapter_id",
+          "track",
+          "profile_ver",
+          "adaptation_version",
+          "profile_max",
+          "profile_short_floor",
+          "profile_min_slice",
+          "profile_tail_hold_max",
+          "seam_policy",
+          "source_spec_hash",
+          "shot_scope_hash",
+          "status",
+          "status_reason",
+          "superseded_by",
+          "created_at",
+          "updated_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "render_units": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "adaptation_id",
+          "project_id",
+          "chapter_id",
+          "track",
+          "profile_ver",
+          "unit_no",
+          "unit_duration",
+          "shot_count",
+          "seam",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "render_unit_shots": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "unit_id",
+          "shot_id",
+          "order_no",
+          "t_from",
+          "t_to",
+          "split_reason",
+          "created_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "prompt_packages": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "unit_id",
+          "track",
+          "format",
+          "body",
+          "ref_pack",
+          "params",
+          "source_spec_hash",
+          "compiled_hash",
+          "compiler_ver",
+          "profile_ver",
+          "qc_status",
+          "created_at",
+          "superseded_by"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "render_tasks": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "unit_id",
+          "package_id",
+          "engine",
+          "track",
+          "params",
+          "seed",
+          "status",
+          "error",
+          "cost_amount",
+          "cost_unit",
+          "started_at",
+          "finished_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "render_attempts": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "task_id",
+          "attempt_no",
+          "seed",
+          "output_path",
+          "duration_real",
+          "status",
+          "error",
+          "started_at",
+          "finished_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "qc_reports": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "target_type",
+          "target_id",
+          "ruleset_ver",
+          "level",
+          "hits",
+          "created_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "timelines": {
+        "kind": "biz",
+        "source": "docs/D01/D01-05-数据库映射与历史数据兼容方案.md",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "chapter_id",
+          "name",
+          "status",
+          "total_duration",
+          "entries",
+          "created_at",
+          "updated_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      }
+    },
+    "d02_ext": {
+      "adaptation_locks": {
+        "kind": "d02_ext",
+        "source": "docs/D02/D02-03-阶段1前置设计决策记录.md",
+        "expected_columns": [
+          "adaptation_id",
+          "lock_key",
+          "lock_value",
+          "created_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "render_task_jobs": {
+        "kind": "d02_ext",
+        "source": "docs/D02/D02-03-阶段1前置设计决策记录.md",
+        "expected_columns": [
+          "task_id",
+          "job_id",
+          "created_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      },
+      "render_selections": {
+        "kind": "d02_ext",
+        "source": "docs/D02/D02-03-阶段1前置设计决策记录.md",
+        "expected_columns": [
+          "unit_id",
+          "attempt_id",
+          "selected_at",
+          "selected_by",
+          "note"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      }
+    }
+  },
+  "existing": {
+    "shots": {
+      "kind": "existing",
+      "source": "lib/core/db.js",
+      "expected_columns": [
+        "id",
+        "project_id",
+        "idx",
+        "chapter",
+        "scene_name",
+        "camera",
+        "visual",
+        "dialogue",
+        "narration",
+        "sub_shots",
+        "blocking",
+        "prompt_id",
+        "duration",
+        "character_ids",
+        "scene_ids",
+        "prop_ids",
+        "costume_ids",
+        "age_ids",
+        "audio_ids",
+        "refs",
+        "resolution",
+        "aspect_ratio",
+        "mode",
+        "video_prompt",
+        "video_prompt_used",
+        "video_path",
+        "first_frame_path",
+        "last_frame_path",
+        "reference_image_path",
+        "seed",
+        "status",
+        "error",
+        "parent_shot_id",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra_columns": [
+        "seam",
+        "storyboard_sheet"
+      ],
+      "required_columns": [
+        "id",
+        "project_id",
+        "idx",
+        "chapter",
+        "scene_name",
+        "blocking",
+        "duration",
+        "status",
+        "error",
+        "video_path",
+        "updated_at"
+      ]
+    },
+    "projects": {
+      "kind": "existing",
+      "source": "lib/core/db.js",
+      "expected_columns": [
+        "id",
+        "name",
+        "type",
+        "novel",
+        "idea",
+        "style",
+        "video_resolution",
+        "video_aspect_ratio",
+        "video_width",
+        "video_height",
+        "image_resolution",
+        "video_model",
+        "seam",
+        "target_duration",
+        "context",
+        "status",
+        "enable_bgm",
+        "enable_subtitles",
+        "auto_script",
+        "structured_spec",
+        "created_at",
+        "updated_at"
+      ],
+      "tolerate_extra_columns": [],
+      "required_columns": [
+        "id",
+        "name",
+        "context",
+        "status",
+        "structured_spec"
+      ]
+    }
+  },
+  "rules": [
+    "比对按列名集合，不按列数、不按列位置（历史库 projects 的 video_model/seam 由 ALTER 追加，位置与新库不同）",
+    "新建库：expected_columns 必须完全相等，extra 必须为 0",
+    "历史库：expected 必须齐；extra 只能是 tolerate_extra_columns 的子集；出现第三项未知列即 FAIL",
+    "required_columns 在两种库上都必须存在，缺失即 FAIL",
+    "既有 shots / projects 不在新建表清单内，永不进入 DROP 回滚",
+    "expect 列集合由生成器从冻结 DDL 文本解析，禁止手写"
+  ],
+  "pending": {}
+}

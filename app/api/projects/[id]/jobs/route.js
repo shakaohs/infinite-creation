@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Jobs, Shots, Assets, Chapters, projectDir } from '@/lib/core/index.js';
+import { Jobs, Shots, Assets, Chapters, projectDir, tx, deleteJobWithArchive } from '@/lib/core/index.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,13 +29,21 @@ export async function GET(_req, { params }) {
 }
 
 // 清除已结束任务（完成/失败/已取消/已中断）：只删记录与日志，不动活动任务、不动素材/成片。
+// 阶段 1 起物理删除走 deleteJobWithArchive：先归档 job 摘要再删关系再删行（同一事务），
+// 保证"删完之后仍能查出这批 task 是哪次流水线跑出来的"。日志文件在事务提交之后才删。
 export async function DELETE(_req, { params }) {
   const { id } = await params;
   const finished = Jobs.list(id).filter((j) => j.status !== 'running' && j.status !== 'queued');
-  for (const j of finished) {
-    try { fs.unlinkSync(path.join(projectDir(id), 'logs', j.id + '.log')); } catch {}
-    if (j.logPath) { try { fs.unlinkSync(j.logPath); } catch {} }
-    Jobs.remove(j.id);
+  const logs = [];
+  tx(() => {
+    for (const j of finished) {
+      deleteJobWithArchive(j.id);
+      logs.push(j);
+    }
+  });
+  for (const j of logs) {
+    try { fs.unlinkSync(path.join(projectDir(id), 'logs', j.id + '.log')); } catch { /* 文件可能不存在 */ }
+    if (j.logPath) { try { fs.unlinkSync(j.logPath); } catch { /* 同上 */ } }
   }
-  return NextResponse.json({ removed: finished.length });
+  return NextResponse.json({ removed: logs.length });
 }
