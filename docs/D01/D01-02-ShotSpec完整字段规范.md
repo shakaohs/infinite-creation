@@ -1,8 +1,8 @@
-# D01-02 ShotSpec 完整字段规范（第三轮修订）
+# D01-02 ShotSpec 完整字段规范（第四轮修订）
 
 > **本文是 D01 全系列唯一的字段字典。** 其他文档只引用，不重复定义。
 > 引用方式：`D01-02 §D`（分区）、`D01-02 §F.speakers`（单字段）。
-> 修订轮次：V3，修订点见 `D01-09`（V2 修订见 `D01-08`）。V3 主要修正：摄影机坐标统一为米制世界坐标（P1-03）、合法切点定义（P0-03）、废止 `台词+动作 ≤ story_duration` 这条错误校验（P1-01）。
+> 修订轮次：V4，修订点见 `D01-10`（V3 见 `D01-09`）。V4 修正：`voice_ids` 降为派生字段、音色权威归 `shot_assets`（P1-05）；适配层表列数重数（P1-01/02）；新增 V-23/V-24。V3 的米制坐标、合法切点、废止旧时长校验保留。
 
 ---
 
@@ -15,7 +15,7 @@
 | **业务字段** | 表达导演创作语义的字段，不含主键、外键、时间戳、版本戳 | **41** |
 | **持久化列** | `story_shots` 表实际列数（业务字段 + 主键 + 工程列） | **48** |
 | **关联表字段** | 从表列数（含主键与外键），不等于业务字段 | `shot_blockings` 20（2 键 + 18 业务）/ `shot_actions` 22（2 键 + 20 业务）/ `shot_states` 8（含 V3 新增 `meta`）/ `shot_assets` 6 / `scene_states` 14 |
-| **适配层表**（不属于 ShotSpec） | 切分与产物，不参与任何创作字段计数 | `render_adaptations` 14 / `render_units` 12 / `render_unit_shots` 8 |
+| **适配层表**（不属于 ShotSpec） | 切分与产物，不参与任何创作字段计数 | `render_adaptations` **17** / `render_units` **13** / `render_unit_shots` 8（V4 逐列重数，见 `D01-05 §4.7/§4.14`） |
 
 **主表业务字段 41 = A8 + B5 + C3 + D14 + F6 + J5**
 
@@ -198,7 +198,7 @@ P_norm = P_m ⊘ active_area
 | `narration` | TEXT | ⭕ | `''` | 旁白口播稿 |
 | `sfx` | TEXT | ⭕ | `''` | 现场音效/环境声 |
 | `music_cue` | TEXT | ⭕ | `''` | 配乐提示 |
-| `voice_ids` | JSON | ⭕ | `[]` | 音色资产 id |
+| `voice_ids` | JSON | ⭕ | `[]` | **派生兼容字段（只读）**：由 `shot_assets(role='voice')` 渲染，不单独维护 |
 
 ### 6.1 `speakers` 结构（修订 P1-1）
 
@@ -229,6 +229,27 @@ P_norm = P_m ⊘ active_area
 - `on_screen` 但 `in_frame=0` → FAIL
 - `off_screen` 但 `in_frame=1` → FAIL
 - `phone` 且 `source` 角色在画内 → WARN
+
+---
+
+### 6.2 音色的唯一权威（P1-05）
+
+V3 有两个地方能表达"这一镜用哪个音色"：`shot_assets(role='voice')` 和 `story_shots.voice_ids`。两个都当权威，就会出现"改一处漏另一处"，而 `sourceSpecHash` 只看得见其中一处。
+
+**V4 定案**：
+
+| 位置 | 角色 | 谁能写 |
+|---|---|---|
+| `shot_assets(role='voice')` | **唯一权威**。带 `order_no`（编译时定 `@图片N`）与资产指纹 | 创作层 |
+| `story_shots.voice_ids` | **派生只读**。由权威按 `order_no` 渲染成一维 id 数组，供旧页面/旧 API 读 | 程序（读出时现算） |
+
+**三条规则**：
+
+1. **写入只写 `shot_assets`**。任何代码不得直接 `UPDATE story_shots SET voice_ids=...`；
+2. **hash 只读 `shot_assets` + 指纹**，`voice_ids` 不进 payload（`D01-06 §4.2`）；
+3. **校验 V-23**：`voice_ids` 与关联表渲染结果不一致 → FAIL，说明有人绕过了权威列。
+
+**历史数据**：`voice_ids` 原值保留不动。首次结构化（M3/B2）时转成 `shot_assets(role='voice')` 行，此后 `voice_ids` 由程序在读出时覆盖成渲染结果——**不丢信息，但不再是事实来源**。
 
 ---
 
@@ -413,7 +434,7 @@ cuts(shot) = { 0, shot.story_duration } ∪ { a.t_to | a ∈ shot.actions }
 
 ---
 
-## 十三、校验规则总表（V-01 ～ V-22）
+## 十三、校验规则总表（V-01 ～ V-24）
 
 | 编号 | 校验 | 级别 | 依据 |
 |---|---|---|---|
@@ -439,6 +460,8 @@ cuts(shot) = { 0, shot.story_duration } ∪ { a.t_to | a ∈ shot.actions }
 | **V-20** | **`time_slices` 无空洞**：排序后首片 `from=0`、末片 `to=story_duration`、相邻首尾相接 | FAIL | 空洞会让"这一段时间在干什么"无答案 |
 | **V-21** | **`cam_pos` 与主主体 `norm_xyz` 的换算一致**（同一坐标系下距离与 `cam_distance_m` 偏差 ≤0.05m） | WARN | 防"机位坐标按归一化填、距离按米填"的混用 |
 | **V-22** | **`unknown` 字段被写入确定值但 `meta` 未更新** | WARN | 可检测"绕过修订记录偷偷改值" |
+| **V-23** | **`voice_ids` ≠ `shot_assets(role='voice')` 的渲染结果** | FAIL | 有人绕过唯一权威写了派生列（§6.2） |
+| **V-24** | **类 B 字段有值但 `spec_source='ai'` 且 `rel` 被写成 `known`** | WARN | AI 生成不得自称确定（`D01-04 §5.2.1`） |
 
 ---
 
