@@ -1,12 +1,12 @@
-# D01-02 ShotSpec 完整字段规范（第二轮修订）
+# D01-02 ShotSpec 完整字段规范（第三轮修订）
 
 > **本文是 D01 全系列唯一的字段字典。** 其他文档只引用，不重复定义。
 > 引用方式：`D01-02 §D`（分区）、`D01-02 §F.speakers`（单字段）。
-> 修订轮次：V2，修订点见 `D01-08`。
+> 修订轮次：V3，修订点见 `D01-09`（V2 修订见 `D01-08`）。V3 主要修正：摄影机坐标统一为米制世界坐标（P1-03）、合法切点定义（P0-03）、废止 `台词+动作 ≤ story_duration` 这条错误校验（P1-01）。
 
 ---
 
-## 〇、三类数字必须分清
+## 〇、四类数字必须分清（V3 新增第四类）
 
 评审要求区分「业务字段 / 持久化列 / 关联表字段」。本文所有计数按此口径：
 
@@ -14,7 +14,8 @@
 |---|---|---|
 | **业务字段** | 表达导演创作语义的字段，不含主键、外键、时间戳、版本戳 | **41** |
 | **持久化列** | `story_shots` 表实际列数（业务字段 + 主键 + 工程列） | **48** |
-| **关联表字段** | 从表列数（含主键与外键），不等于业务字段 | `shot_blockings` 20（2 键 + 18 业务）/ `shot_actions` 22（2 键 + 20 业务）/ `shot_states` 7 / `shot_assets` 6 / `scene_states` 14 |
+| **关联表字段** | 从表列数（含主键与外键），不等于业务字段 | `shot_blockings` 20（2 键 + 18 业务）/ `shot_actions` 22（2 键 + 20 业务）/ `shot_states` 8（含 V3 新增 `meta`）/ `shot_assets` 6 / `scene_states` 14 |
+| **适配层表**（不属于 ShotSpec） | 切分与产物，不参与任何创作字段计数 | `render_adaptations` 14 / `render_units` 12 / `render_unit_shots` 8 |
 
 **主表业务字段 41 = A8 + B5 + C3 + D14 + F6 + J5**
 
@@ -88,20 +89,42 @@ is_insert = 0 时：不限制
 
 上一版 8 字段无法支撑越轴计算（评审 P0-3）。V2 引入**摄影机空间模型**：机位必须有坐标、朝向、高度、距离、侧别、轨迹、滚转。
 
+### 4.0 坐标与几何约定（P1-03 新增，几何计算的唯一前提）
+
+**没有这四条约定，D 区的数值无法被任何程序正确使用。**
+
+| # | 约定 | 内容 |
+|---|---|---|
+| G1 | **世界坐标系** | 右手系，`+Z` 向上（世界 up），地面为 `XY` 平面，**单位米** |
+| G2 | **`cam_pos` 用米，不用归一化** | V2 写"归一化 0–1"，与 `cam_distance_m`（米）、`distance_to_camera`（米）混用会算出错误几何。V3 统一为**米制世界坐标** |
+| G3 | **`cam_target` 必须可解析为坐标** | 允许写实体 id（`as_char_harold` / `fx_table`），由程序取其 `anchor_point`；不允许只写"床的方向"这类描述 |
+| G4 | **侧别是派生值，不存字段** | `norm_xyz` 与 `cam_pos` 都在米制下可换算后，侧别由 `D01-04 §6.3` 的 `axisSide()` 现算。**V2 §4.6 引用的 `cam_axis_side` 字段并不存在于本表**，属悬空引用，V3 删除该引用 |
+
+**归一化 ↔ 米的换算**（唯一换算点，其他文档只引用）：
+
+```
+P_m  = P_norm ⊙ active_area          // active_area = [width_m, depth_m, height_m]
+P_norm = P_m ⊘ active_area
+```
+
+`active_area` 存于 `scene_states.coord_system`。缺它时，任何"归一化距离 → 米"的换算都不可做，`cam_distance_m` 只能人工填。
+
+**滚转符号待校定**：`cam_roll_deg > 0` 约定为"画面顺时针倾斜（地平线左端上抬）"，但不同渲染器对 dutch 正负的约定不一致。实施第一步必须用测试图（`+10°`）校定，结论写进 `target_profiles.roll_sign_verified`。**未校定时所有含滚转的镜头只算不滚转近似，并标 `ROLL_UNVERIFIED`**（`D01-04 §11 S-22`）。
+
 | # | 字段 | 类型 | 必填(S级) | 默认 | 单位/范围 | 说明 |
 |---|---|---|---|---|---|---|
 | D1 | `shot_size` | ENUM | all | — | 9 档（§4.1） | 景别 |
 | D2 | `cam_direction` | ENUM | all | — | 5 值（§4.2） | 方向轴 |
 | D3 | `cam_height` | ENUM | all | — | 8 值（§4.3） | 高度轴（**已移除 dutch**） |
-| D4 | `cam_roll_deg` | REAL | S2+ | `0` | -20 ~ +20 | 滚转/画面倾斜（荷兰角） |
-| D5 | `cam_pos` | JSON | **S2+** | `null` | `{x,y,z}` 归一化 0–1 | 机位在场坐标系中的位置 |
-| D6 | `cam_target` | TEXT | S1+ | `''` | 资产/角色 id 或坐标点 | 机位观察目标 |
+| D4 | `cam_roll_deg` | REAL | S2+ | `0` | -20 ~ +20 | 滚转/画面倾斜（荷兰角），符号见 §4.0 |
+| D5 | `cam_pos` | JSON | **S2+** | `null` | `{x,y,z}` **米制世界坐标**（§4.0 G1/G2） | 机位光学中心 |
+| D6 | `cam_target` | TEXT/JSON | S1+ | `''` | 实体 id 或 `{x,y,z}`（§4.0 G3） | 机位观察目标 |
 | D7 | `cam_distance_m` | REAL | S2+ | `null` | 0.3 ~ 30 | 机位到主主体距离（米） |
 | D8 | `lens_mm` | INT | ⭕ | `0` | 8 ~ 300 | 焦段 |
 | D9 | `fov_deg` | REAL | ⭕ | `null` | 5 ~ 120 | 水平视场角（可由 lens 推算，存冗余供校验） |
 | D10 | `movement` | ENUM | ✅ | `static` | 21 值（§4.4） | 运镜方式 |
 | D11 | `movement_amp` | ENUM | ✅ | `none` | `none`/`micro`/`normal`/`large` | 运镜幅度 |
-| D12 | `cam_path` | JSON | S3+ | `[]` | `[{t,x,y,z}]` | 运镜轨迹采样点（`static` 时为空） |
+| D12 | `cam_path` | JSON | S3+ | `[]` | `[{t,x,y,z}]`（米制） | 运镜轨迹采样点（`static` 时为空） |
 | D13 | `composition_rule` | ENUM | ⭕ | `''` | 7 值（§4.5） | 构图法 |
 | D14 | `cam_note` | TEXT | ⭕ | `''` | — | 机位原生描述（人读，不参与机检） |
 
@@ -140,16 +163,21 @@ is_insert = 0 时：不限制
 
 ### 4.6 摄影机数据完整度四级（越轴可信度）
 
-机位数据不是"全有或全无"。按可用精度分四级，**越轴算法只在前两级可信**（详见 `D01-04 §6`）：
+机位数据不是"全有或全无"。而且**两个检测器的输入需求不同**，必须分开看（`D01-04 §6`）：
 
-| 级别 | 具备字段 | 越轴判定 |
-|---|---|---|
-| **P-A 完整** | `cam_pos` + `cam_target` + `cam_distance_m` + `cam_axis_side` | 可算，FAIL/WARN 有效 |
-| **P-B 半完整** | `cam_pos` + `cam_direction`（无 target） | 可算，最高只到 WARN |
-| **P-C 仅枚举** | 只有 `cam_direction` + `cam_height` | **不可算 → `AXIS_UNVERIFIED`** |
-| **P-D 缺失** | 都没有 | **不可算 → `AXIS_UNVERIFIED`** |
+| 级别 | `AXIS_SIDE` 需要 | `SCREEN_LR` 需要 | 可出级别 |
+|---|---|---|---|
+| **P-A 完整** | `cam_pos` + `axis_line` + `active_area` | 再加 `cam_target` + 基向量非退化 + **`roll_sign_verified=true`** | FAIL / WARN / PASS |
+| **P-B 半完整** | 同上 | 缺 `cam_target` 或滚转未校定 | **最高 WARN** |
+| **P-C 仅枚举** | 只有 `cam_direction` / `cam_height` | — | `AXIS_UNVERIFIED` + `SCREEN_LR_UNVERIFIED`（INFO） |
+| **P-D 缺失** | 都没有 | — | 同上（INFO） |
 
-> 实测历史 66 条分镜的 `camera` 全是文本（如「中景 · 50mm · 侧45度 · 固定」），无任何坐标字段 → 全部处于 **P-C 或 P-D**。因此越轴检测对历史数据**一律输出"无法验证"，绝不输出 PASS**。这是评审 P0-3 的硬要求。
+**V3 修正两处悬空**：
+
+1. V2 的 P-A 条件写了 `cam_axis_side`——**这个字段不在 D 区 14 字段里**（§4 表可查）。侧别是派生值（§4.0 G4），不是要填的字段。V3 改为"`cam_pos` + `axis_line` + `active_area`"。
+2. V2 的 P-B 写"可算，最高只到 WARN"，但没说 WARN 针对哪个检测器。V3 明确：`AXIS_SIDE` 在 P-B 仍可算出侧别，只是 `SCREEN_LR` 不可用——所以 P-B 下**能判"机位换侧"，不能判"画面左右翻转"**。
+
+> 实测历史 66 条分镜的 `camera` 全是文本（如「中景 · 50mm · 侧45度 · 固定」），无任何坐标字段 → 全部处于 **P-C 或 P-D**。因此越轴检测对历史数据**一律输出"无法验证"，绝不输出 PASS**。
 
 ---
 
@@ -285,6 +313,14 @@ CREATE TABLE shot_assets (
 3. 边界落在动作中段（`t_from < 边界 < t_to`）→ FAIL「动作被劈成两半」；
 4. 三条"断开"可以重合，也可以完全不同（长镜头内部有动作断点但无剪辑点）。
 
+**合法切点集合（切分算法的唯一输入，定义在 `D01-06 §3.3.1`）**：
+
+```
+cuts(shot) = { 0, shot.story_duration } ∪ { a.t_to | a ∈ shot.actions }
+```
+
+镜内切点**只能**取自 `shot_actions.t_to`（动作结束点）。`is_cut_point` 只作用于镜与镜之间的边界——它不产生镜内切点。切在 `t_from`（动作起手）等于把动作劈成两半，一律拒绝。
+
 ### 10.2 `time_jump` 的作用
 
 `time_jump=1` 时连续性引擎**允许** `state_in` 与本场前镜 `state_out` 不一致（换装、换景、时间流逝），降级为 INFO。这是闪回/时间跳跃的合法出口。
@@ -308,7 +344,9 @@ CREATE TABLE shot_assets (
 
 ## 十二、完整 JSON 示例
 
-场景：病房对峙 `S02_病房`，镜 3。注意 `cam_pos` 与 `cam_axis_side` 让越轴判定有据。
+场景：病房对峙 `S02_病房`，镜 3。`cam_pos` 与 `cam_path` 均为**米制世界坐标**（§4.0），`active_area = [6,5,3]` 米。
+
+> 本示例与 `D01-04 §6.6` 的越轴算例**不是同一镜**（那是 sh_11），但共用同一套场景坐标：哈罗德在 `(1.80, 3.50, 0)`。示例机位到哈罗德的距离 `|(2.45,1.75,1.60)-(1.80,3.50,1.50)| ≈ 1.87m`，与 `cam_distance_m` 一致，可用 V-21 校验。
 
 ```json
 {
@@ -336,14 +374,14 @@ CREATE TABLE shot_assets (
   "cam_direction": "three_quarter",
   "cam_height": "slight_low",
   "cam_roll_deg": 0,
-  "cam_pos": { "x": 0.42, "y": 0.30, "z": 0.55 },
+  "cam_pos": { "x": 2.45, "y": 1.75, "z": 1.60 },
   "cam_target": "as_char_harold",
-  "cam_distance_m": 1.8,
+  "cam_distance_m": 1.87,
   "lens_mm": 50,
   "fov_deg": 39.6,
   "movement": "dolly_in",
   "movement_amp": "micro",
-  "cam_path": [ { "t": 0.0, "x": 0.42, "y": 0.30 }, { "t": 4.5, "x": 0.44, "y": 0.34 } ],
+  "cam_path": [ { "t": 0.0, "x": 2.45, "y": 1.75, "z": 1.60 }, { "t": 4.5, "x": 2.40, "y": 1.86, "z": 1.60 } ],
   "composition_rule": "foreground_occlusion",
   "cam_note": "机位在床尾偏左 1.8m，高度 0.55m，略低于哈罗德视平线，缓推 12cm",
 
@@ -375,7 +413,7 @@ CREATE TABLE shot_assets (
 
 ---
 
-## 十三、校验规则总表（V-01 ～ V-18）
+## 十三、校验规则总表（V-01 ～ V-22）
 
 | 编号 | 校验 | 级别 | 依据 |
 |---|---|---|---|
@@ -387,8 +425,8 @@ CREATE TABLE shot_assets (
 | V-06 | 机位配额 | WARN | `cam_roll_deg≠0` ≤1/集；大仰/大俯各 ≤3；`profile` ≤15% |
 | V-07 | 景别重复 | WARN | 连续 3 镜同档 |
 | V-08 | 特写比例 | WARN | 25%–40%（人物特写） |
-| V-09 | 语速 | FAIL | 中文 3.5 字/秒；英文 3.8 词/秒 |
-| V-10 | 时长预算 | FAIL | 台词 + 动作 ≤ `story_duration` |
+| V-09 | 语速（**按 `sync.dialogue_span` 实算，不用镜时长**） | FAIL | 基准中文 3.5 字/秒、英文 3.8 词/秒；超过 4.5 字/秒 或 4.8 词/秒 → FAIL。标点停顿按 0.15s/个从 span 中扣除（`D01-03 §5.3`） |
+| ~~V-10~~ | **已废止：台词 + 动作 ≤ `story_duration`** | — | 该式把台词与动作当**串行**，与"边说边摔"直接冲突。改由 `D01-03` A-11（区间越界）+ A-12（同人部位冲突）承担。**不得复用此编号**，保留占位以防旧文档引用落空 |
 | V-11 | 运镜-幅度一致 | FAIL | 非 `static` 不得 `amp=none` |
 | V-12 | 剪辑点 vs 单元边界 | FAIL | 单元边界不得落在动作中段 |
 | V-13 | 空镜台词规则 | FAIL | §2.1 |
@@ -397,6 +435,10 @@ CREATE TABLE shot_assets (
 | V-16 | 视场角与焦段一致 | WARN | `fov_deg` 与 `lens_mm` 换算偏差 >5% |
 | V-17 | 空间冲突 | FAIL | `D01-04 §11` |
 | V-18 | 状态断裂 | FAIL | `D01-04 §5` |
+| **V-19** | **`state_in_meta` / `state_out_meta` 的键必须是可解析的字段路径**（`chars.<id>.<field>` 且实体存在） | FAIL | 防拼错 key 导致可靠性标记静默失效 |
+| **V-20** | **`time_slices` 无空洞**：排序后首片 `from=0`、末片 `to=story_duration`、相邻首尾相接 | FAIL | 空洞会让"这一段时间在干什么"无答案 |
+| **V-21** | **`cam_pos` 与主主体 `norm_xyz` 的换算一致**（同一坐标系下距离与 `cam_distance_m` 偏差 ≤0.05m） | WARN | 防"机位坐标按归一化填、距离按米填"的混用 |
+| **V-22** | **`unknown` 字段被写入确定值但 `meta` 未更新** | WARN | 可检测"绕过修订记录偷偷改值" |
 
 ---
 
