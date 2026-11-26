@@ -1,8 +1,8 @@
-# D01-02 ShotSpec 完整字段规范（第四轮修订）
+# D01-02 ShotSpec 完整字段规范（第五轮修订）
 
 > **本文是 D01 全系列唯一的字段字典。** 其他文档只引用，不重复定义。
 > 引用方式：`D01-02 §D`（分区）、`D01-02 §F.speakers`（单字段）。
-> 修订轮次：V4，修订点见 `D01-10`（V3 见 `D01-09`）。V4 修正：`voice_ids` 降为派生字段、音色权威归 `shot_assets`（P1-05）；适配层表列数重数（P1-01/02）；新增 V-23/V-24。V3 的米制坐标、合法切点、废止旧时长校验保留。
+> 修订轮次：**V5**，修订点见 `D01-11`（V4 见 `D01-10`，V3 见 `D01-09`）。V5 修正：`§10.1` 切点定义重写为 `candidateCuts` + 七条规则（P0-01，删去"`t_from` 一律拒绝"的旧表述）；`shot_assets` 列数 6→**5**、`render_adaptations` 17→**18**（P1-01）；音色顺序改为库级约束并新增 V-25/V-26（P1-03）。V4 的 `voice_ids` 派生、V3 的米制坐标保留。
 
 ---
 
@@ -14,8 +14,8 @@
 |---|---|---|
 | **业务字段** | 表达导演创作语义的字段，不含主键、外键、时间戳、版本戳 | **41** |
 | **持久化列** | `story_shots` 表实际列数（业务字段 + 主键 + 工程列） | **48** |
-| **关联表字段** | 从表列数（含主键与外键），不等于业务字段 | `shot_blockings` 20（2 键 + 18 业务）/ `shot_actions` 22（2 键 + 20 业务）/ `shot_states` 8（含 V3 新增 `meta`）/ `shot_assets` 6 / `scene_states` 14 |
-| **适配层表**（不属于 ShotSpec） | 切分与产物，不参与任何创作字段计数 | `render_adaptations` **17** / `render_units` **13** / `render_unit_shots` 8（V4 逐列重数，见 `D01-05 §4.7/§4.14`） |
+| **关联表字段** | 从表列数（含主键与外键），不等于业务字段 | `shot_blockings` 20（2 键 + 18 业务）/ `shot_actions` 22（2 键 + 20 业务）/ `shot_states` 8（含 `meta`）/ `shot_assets` **5** / `scene_states` 14 |
+| **适配层表**（不属于 ShotSpec） | 切分与产物，不参与任何创作字段计数 | `render_adaptations` **18** / `render_units` **13** / `render_unit_shots` 8（V5 逐列重数，见 `D01-05 §4.7/§4.14`） |
 
 **主表业务字段 41 = A8 + B5 + C3 + D14 + F6 + J5**
 
@@ -240,7 +240,7 @@ V3 有两个地方能表达"这一镜用哪个音色"：`shot_assets(role='voice
 
 | 位置 | 角色 | 谁能写 |
 |---|---|---|
-| `shot_assets(role='voice')` | **唯一权威**。带 `order_no`（编译时定 `@图片N`）与资产指纹 | 创作层 |
+| `shot_assets(role='voice')` | **唯一权威**。带 `order_no`（编译时定 `Audio 1/2/3`）与资产指纹 | 创作层 |
 | `story_shots.voice_ids` | **派生只读**。由权威按 `order_no` 渲染成一维 id 数组，供旧页面/旧 API 读 | 程序（读出时现算） |
 
 **三条规则**：
@@ -248,6 +248,18 @@ V3 有两个地方能表达"这一镜用哪个音色"：`shot_assets(role='voice
 1. **写入只写 `shot_assets`**。任何代码不得直接 `UPDATE story_shots SET voice_ids=...`；
 2. **hash 只读 `shot_assets` + 指纹**，`voice_ids` 不进 payload（`D01-06 §4.2`）；
 3. **校验 V-23**：`voice_ids` 与关联表渲染结果不一致 → FAIL，说明有人绕过了权威列。
+
+**音色顺序（V5 · P1-03）**：顺序不是"约定"，是**数据库约束**。
+
+| 项 | 规则 |
+|---|---|
+| 起始值 | `order_no` **从 1 起**（V4 的 `DEFAULT 0` 废止） |
+| 唯一性 | `UNIQUE (shot_id, role, order_no)` —— 同镜同角色不得重号 |
+| 连续性 | 同 `(shot, role)` 内必须是 `1..n`，跳号 → `ASSET_ORDER_GAP`（FAIL，V-25） |
+| 上限 | `role='voice'` 每镜 ≤3（`CHECK` + `VOICE_OVERFLOW`） |
+| 编号映射 | `ORDER BY order_no ASC` → 第 1 条 = `Audio 1`，第 2 条 = `Audio 2`，第 3 条 = `Audio 3` |
+
+**为什么必须重号不重号这件事落到 DDL**：`(shot_id, role, asset_id)` 这个主键**拦不住**两个不同音色资产写同一个 `order_no`；一旦发生，`Audio 1` 归谁就取决于 `SELECT` 的返回顺序——同一条分镜两次编译可能出两个音色，而 `sourceSpecHash` 一模一样。**顺序必须是数据，不能是执行期的偶然。**
 
 **历史数据**：`voice_ids` 原值保留不动。首次结构化（M3/B2）时转成 `shot_assets(role='voice')` 行，此后 `voice_ids` 由程序在读出时覆盖成渲染结果——**不丢信息，但不再是事实来源**。
 
@@ -261,7 +273,7 @@ V3 有两个地方能表达"这一镜用哪个音色"：`shot_assets(role='voice
 
 ## 八、H 区 · 首尾状态（从表，见 `D01-04`）
 
-`shot_states` **7 列**。字段唯一出处：`D01-04 §5`。
+`shot_states` **8 列**（含 `meta`）。字段唯一出处：`D01-04 §5.1`、DDL `D01-05 §4.5`。
 
 ---
 
@@ -271,16 +283,7 @@ V3 有两个地方能表达"这一镜用哪个音色"：`shot_assets(role='voice
 
 **唯一方案 = `shot_assets` 关联表 + 主表零 JSON 资产列。**
 
-```sql
-CREATE TABLE shot_assets (
-  shot_id    TEXT NOT NULL,
-  asset_id   TEXT NOT NULL,
-  role       TEXT NOT NULL,      -- character/scene/prop/costume/age/voice/audio/ref
-  order_no   INTEGER DEFAULT 0,  -- 参考图编号顺序（编译时定 @图片N）
-  variant_of TEXT DEFAULT '',    -- 变体归属（服装/年龄变体指向基础角色）
-  PRIMARY KEY (shot_id, role, asset_id)
-);
-```
+DDL 唯一出处：`D01-05 §4.6`（5 列）。此处只列约束口径，**不重复定义 DDL**——V4 曾在本节贴过一份 `order_no INTEGER DEFAULT 0` 的旧版本，与 `D01-05` 冲突，V5 已删（P1-01/P1-03）。
 
 | role | 取值来源 | 约束 |
 |---|---|---|
@@ -289,9 +292,18 @@ CREATE TABLE shot_assets (
 | `prop` | `category=prop` | 与 `hand_state` 引用一致 |
 | `costume` | `category=costume` | **同一角色每镜只一件**（按 `variant_of` 校验） |
 | `age` | `category=age` | 同角色每镜只一个，且不与 costume 同时引用同角色 |
-| `voice` | `category ∈ {voice, narration}` | ≤3 |
+| `voice` | `category ∈ {voice, narration}` | ≤3（`CHECK` + V-26）；`order_no` 1/2/3 → `Audio 1/2/3` |
 | `audio` | `category ∈ {music, sfx, audio}` | — |
 | `ref` | 任意 | `order_no` 定 `@图片N` 编号 |
+
+**`order_no` 约束（全表通用，不只是 voice）**：
+
+| 规则 | 说明 |
+|---|---|
+| 取值 | **从 1 起**，`NOT NULL`，无默认值 |
+| 唯一 | `UNIQUE (shot_id, role, order_no)` —— 同镜同角色不得重号 |
+| 连续 | 同一 `(shot_id, role)` 必须是 `1..n`，跳号 → `ASSET_ORDER_GAP`（V-25） |
+| 作用域 | 每个 `role` 各自从 1 起（`character` 的 1 与 `voice` 的 1 互不干扰） |
 
 **为什么从 JSON 列改为关联表**：
 
@@ -330,17 +342,35 @@ CREATE TABLE shot_assets (
 **规则**：
 
 1. 单元边界**优先**落在 `is_cut_point=1` 的镜后；
-2. 单镜超长必须劈开时，边界只能落在某个动作的 `t_to`（自然动作断点），并记 `split_reason='oversize'`；
-3. 边界落在动作中段（`t_from < 边界 < t_to`）→ FAIL「动作被劈成两半」；
+2. 单镜超长必须劈开时，边界只能落在动作的 **`t_from` 或 `t_to`**（自然动作断点），**且必须通过本镜全部动作的跨越检查**，并记 `split_reason='oversize'`；
+3. 边界落在动作执行区间内部（`t_from < 边界 < t_to`）→ FAIL「动作被劈成两半」；
 4. 三条"断开"可以重合，也可以完全不同（长镜头内部有动作断点但无剪辑点）。
 
-**合法切点集合（切分算法的唯一输入，定义在 `D01-06 §3.3.1`）**：
+**合法切点集合（切分算法的唯一输入，唯一权威定义在 `D01-06 §3.3.1`）**：
 
 ```
-cuts(shot) = { 0, shot.story_duration } ∪ { a.t_to | a ∈ shot.actions }
+candidateCuts(shot) = { 0, story_duration } ∪ { a.t_from | a ∈ actions } ∪ { a.t_to | a ∈ actions }
+
+crosses(a, t)  ⟺  (a.t_from + EPS < t) && (t < a.t_to - EPS)
+
+legalCuts(shot) = { t ∈ candidateCuts | ¬∃ a ∈ actions : crosses(a, t) }
 ```
 
-镜内切点**只能**取自 `shot_actions.t_to`（动作结束点）。`is_cut_point` 只作用于镜与镜之间的边界——它不产生镜内切点。切在 `t_from`（动作起手）等于把动作劈成两半，一律拒绝。
+**V5 统一口径（此前 V2–V4 各文档不一致，本节为最终版）**：
+
+| 规则 | 内容 |
+|---|---|
+| 起点可切 | `t == a.t_from` 合法——动作还没开始，完整落在右片段 |
+| 终点可切 | `t == a.t_to` 合法——动作已结束，完整落在左片段 |
+| 区间内禁切 | `a.t_from < t < a.t_to` 一律非法（含其他人物正在执行的动作） |
+| 必须全量检查 | 候选点要过**本镜所有**动作的 `crosses()`，不是只过"产生这个候选的那一个动作" |
+| 半开区间 | 动作占 `[t_from, t_to)`；`a.t_to <= t` → 左片段，`a.t_from >= t` → 右片段 |
+| 唯一归属 | 切点处的动作只能属于一个片段，不得两边各播一次 |
+| 局部时间 | 片段内一律 `t_local = t_abs - fragment.t_from` |
+
+> `D01-01 §3.3`、`D01-06 §3.3.1` 与本表逐字同义。任何文档若出现"只能切在 `t_to`"或"`t_from` 不允许切"，均视为过期文字。
+
+`is_cut_point` 只作用于**镜与镜之间**的边界——它不产生镜内切点。
 
 ### 10.2 `time_jump` 的作用
 
@@ -430,11 +460,11 @@ cuts(shot) = { 0, shot.story_duration } ∪ { a.t_to | a ∈ shot.actions }
 }
 ```
 
-配套：空间见 `D01-04 §4`，动作见 `D01-03 §7`（含可计算最终位置），资产为 `shot_assets` 6 行。
+配套：空间见 `D01-04 §4`，动作见 `D01-03 §7`（含可计算最终位置），资产为 `shot_assets` 6 行（行数，不是列数——该表 5 列）。
 
 ---
 
-## 十三、校验规则总表（V-01 ～ V-24）
+## 十三、校验规则总表（V-01 ～ V-26）
 
 | 编号 | 校验 | 级别 | 依据 |
 |---|---|---|---|
@@ -462,6 +492,8 @@ cuts(shot) = { 0, shot.story_duration } ∪ { a.t_to | a ∈ shot.actions }
 | **V-22** | **`unknown` 字段被写入确定值但 `meta` 未更新** | WARN | 可检测"绕过修订记录偷偷改值" |
 | **V-23** | **`voice_ids` ≠ `shot_assets(role='voice')` 的渲染结果** | FAIL | 有人绕过唯一权威写了派生列（§6.2） |
 | **V-24** | **类 B 字段有值但 `spec_source='ai'` 且 `rel` 被写成 `known`** | WARN | AI 生成不得自称确定（`D01-04 §5.2.1`） |
+| **V-25** | **同一 `(shot_id, role)` 的 `order_no` 不是 `1..n` 连续**（跳号/重号） | FAIL `ASSET_ORDER_GAP` | 顺序是数据，不能靠 `SELECT` 偶然（§6.2、`D01-05 §4.6`） |
+| **V-26** | **同一镜 `role='voice'` 超过 3 条** | FAIL `VOICE_OVERFLOW` | 编译产物只有 `Audio 1/2/3` 三个槽 |
 
 ---
 
