@@ -237,7 +237,7 @@ function runProbe(overrides = {}) {
   const env = { ...process.env };
   for (const k of ['IC_DATA_DIR', 'IC_DB_SQLITE_PATH', 'IC_CONFIG', 'IC_DB', 'DATABASE_URL']) delete env[k];
   Object.assign(env, overrides);
-  const r = spawnSync(process.execPath, [PROBE], { env, encoding: 'utf8', cwd: process.cwd() });
+  const r = spawnSync(process.execPath, [PROBE], { env, encoding: 'utf8', cwd: BASE });
   const line = String(r.stdout || '').split('\n').filter((l) => l.startsWith('PROBE ')).pop();
   assert.ok(line, '探针未输出结果：' + String(r.stderr || '').slice(0, 400));
   return JSON.parse(line.slice(6));
