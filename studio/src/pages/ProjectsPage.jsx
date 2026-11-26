@@ -10,7 +10,7 @@ import {
   IMAGE_RESOLUTION_ITEMS,
   PROJECT_TYPE_LABEL,
 } from '../lib/shared.js';
-import { RESOLUTION_SELECT_ITEMS, RATIO_SELECT_ITEMS, MetaItem } from '../components/visuals.jsx';
+import { RESOLUTION_SELECT_ITEMS, RATIO_SELECT_ITEMS, VIDEO_MODEL_SELECT_ITEMS, SEAM_SELECT_ITEMS, MetaItem } from '../components/visuals.jsx';
 import { Badge, Button, EmptyState, Field, Input, Select, Skeleton, StatusPill, Switch, Textarea } from '../components/ui.jsx';
 import { Drawer, FormSection } from '../components/overlays.jsx';
 import ReferencePicker from '../components/ReferencePicker.jsx';
@@ -61,7 +61,7 @@ export default function ProjectsPage({ onOpen, type = '', showTypeFilter = false
   const [agentLoading, setAgentLoading] = useState(false);
 
   // 一个内容框：自动模式当小说原文，剧本模式当剧本内容
-  const [form, setForm] = useState({ name: '', novel: '', scriptMode: 'auto', style: '', customStyle: '', res: '480P', ratio: '16:9', cw: '', ch: '', imageRes: '1K', enableBgm: true, enableSubtitles: true });
+  const [form, setForm] = useState({ name: '', novel: '', scriptMode: 'auto', style: '', customStyle: '', res: '480P', ratio: '16:9', cw: '', ch: '', imageRes: '1K', videoModel: 'h3', seam: 'auto', enableBgm: true, enableSubtitles: false });
   const [refs, setRefs] = useState([]);
   // 上传 txt 的解析结果（不在输入框预览全文，创建时优先使用它）
   const novelFileRef = useRef(null);
@@ -126,8 +126,10 @@ export default function ProjectsPage({ onOpen, type = '', showTypeFilter = false
         ratio: defaults.aspectRatio || f.ratio,
         cw: defaults.width ? String(defaults.width) : f.cw,
         ch: defaults.height ? String(defaults.height) : f.ch,
+        videoModel: defaults.videoModel || f.videoModel,
+        seam: defaults.seam || f.seam,
         enableBgm: defaults.enableBgm !== false,
-        enableSubtitles: defaults.enableSubtitles !== false,
+        enableSubtitles: defaults.enableSubtitles === true,
       };
     });
   }, [defaults]);
@@ -239,6 +241,8 @@ export default function ProjectsPage({ onOpen, type = '', showTypeFilter = false
         video_width: Number(form.cw) || 0,
         video_height: Number(form.ch) || 0,
         image_resolution: form.imageRes,
+        video_model: form.videoModel,
+        seam: form.seam,
         enable_bgm: form.enableBgm,
         enable_subtitles: form.enableSubtitles,
       });
@@ -286,8 +290,10 @@ export default function ProjectsPage({ onOpen, type = '', showTypeFilter = false
       cw: defaults?.width ? String(defaults.width) : '',
       ch: defaults?.height ? String(defaults.height) : '',
       imageRes: defaults?.imageResolution || '1K',
+      videoModel: defaults?.videoModel || 'h3',
+      seam: defaults?.seam || 'auto',
       enableBgm: defaults?.enableBgm !== false,
-      enableSubtitles: defaults?.enableSubtitles !== false,
+      enableSubtitles: defaults?.enableSubtitles === true,
     });
     setRefs([]);
     setUploadedNovel(null);
@@ -648,6 +654,12 @@ export default function ProjectsPage({ onOpen, type = '', showTypeFilter = false
                 <Select value={form.ratio} onChange={(v) => setForm({ ...form, ratio: v })} items={RATIO_SELECT_ITEMS} />
               </Field>
             </div>
+            <Field label="视频模型" hint="H3 走本地/云端 ComfyUI 出片；Seedance 后期外接视频生成接口。">
+              <Select value={form.videoModel} onChange={(v) => setForm({ ...form, videoModel: v })} items={VIDEO_MODEL_SELECT_ITEMS} />
+            </Field>
+            <Field label="段缝衔接" hint="相邻镜头/多段的衔接方式；自动=按情绪节拍判断。">
+              <Select value={form.seam} onChange={(v) => setForm({ ...form, seam: v })} items={SEAM_SELECT_ITEMS} />
+            </Field>
             {form.res === VIDEO_RESOLUTION_CUSTOM ? (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="宽度（px）">

@@ -48,7 +48,7 @@
   },
   "459:451": {
     "inputs": {
-      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",

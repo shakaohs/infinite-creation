@@ -2,7 +2,7 @@
 
 # Agent Infinite Creation · Turn Your Stories into a Billion Frames
 
-**Source-available, free for non-commercial use — fully automated local-agent video generation ✨**
+**Fully automated video generation by local agent, a free and open-source project ✨**
 Upload a novel or script and generate films of any length locally — unattended.
 
 <a href="https://github.com/SwotAtmk/infinite-creation/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/SwotAtmk/infinite-creation?style=for-the-badge&color=F5B700&label=stars"></a> <a href="README.md"><img alt="简体中文" src="https://img.shields.io/badge/README-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-555?style=for-the-badge"></a> <a href="https://github.com/SwotAtmk/infinite-creation/blob/main/LICENSE"><img alt="PolyForm-NC 1.0.0" src="https://img.shields.io/badge/licence-PolyForm--NC--1.0.0-4B5563?style=for-the-badge"></a> <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-%3E%3D22-339933?style=for-the-badge"></a> <a href="https://space.bilibili.com/384196392?spm_id_from=333.1007.0.0"><img alt="我的B站" src="https://img.shields.io/badge/bilibili-SwotAtmk-blue?style=for-the-badge&logo=bilibili&logoColor=%2300A1D6"></a>
@@ -157,6 +157,11 @@ locally (fill in the target install directory here), and run it locally.
 Please refer to https://gitcode.com/SwotAtmk/infinite-creation/releases/download/v1.0.0/install-skill.md for installation instructions,
 Install the infinite-creation skill from GitHub (overseas) or GitCode (domestic), then start the project according to the skill description.
 ```
+
+## Deployment video tutorial
+**【Free and open-source AI unlimited creation tool | Project deployment tutorial】**
+[https://www.bilibili.com/video/BV1MKyrzxEgz/?share_source=copy_web&vd_source=4de78f3e6122809eba5fa7ced06ef5ae](https://www.bilibili.com/video/BV1MKyrzxEgz/?share_source=copy_web&vd_source=4de78f3e6122809eba5fa7ced06ef5ae)
+
 
 ## Hardware
 
@@ -331,6 +336,10 @@ My Bilibili：[https://space.bilibili.com/384196392?spm_id_from=333.1007.0.0](ht
    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=swotatmk/infinite-creation&type=date&legend=bottom-right" />
  </picture>
 </a>
+
+## Feedback
+
+If you run into problems, find bugs, or want new features, please fill in the [infinite-creation Requirements & Feedback Survey](https://docs.qq.com/form/page/DUGZ6ekNsQ1pma2Zs), or open a [GitHub Issue](https://github.com/SwotAtmk/infinite-creation/issues).
 
 ## License & Commercial Use
 

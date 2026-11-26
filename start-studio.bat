@@ -1,7 +1,12 @@
 @echo off
-chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
+
+rem Studio launcher (single file):
+rem   1. if backend 4610 / frontend 4710 are already listening -> kill them first
+rem   2. start both, each in its own minimized window
+rem   3. close this window and the services keep running; run this file again to restart
+rem   stop-studio.bat stops them.
 
 set "BACKEND_PORT=4610"
 set "PORT=4610"
@@ -10,29 +15,28 @@ set "LOG_DIR=%~dp0studio\logs"
 set "STUDIO_LOG=%~dp0studio\logs\studio.log"
 set "BACKEND_LOG=%~dp0logs\studio-backend.log"
 set "NEXT_DIST_DIR=.next-studio-dev"
-
-rem 长任务（Agent + 多候选渲染）内存峰值较高，避免默认 4GB 堆直接 OOM
-
-set "NODE_OPTIONS=--max-old-space-size=8192"
-rem 开发模式用独立 dist，避免 Next dev 覆盖 start-studio-prod 的 .next-studio 生产构建
 set "HOST=0.0.0.0"
+set "STUDIO_BACKEND=http://127.0.0.1:4610"
+
+rem Long jobs (agent + multi-candidate render) peak above the 4GB default heap.
+set "NODE_OPTIONS=--max-old-space-size=8192"
 
 echo ============================================
-echo   infinite-creation Studio 启动
+echo   infinite-creation Studio
 echo ============================================
 echo.
 
 where node >nul 2>&1
 if errorlevel 1 goto :no_node
-where pnpm >nul 2>&1
-if errorlevel 1 goto :no_pnpm
 
 if not exist "node_modules\next\package.json" goto :install
-if not exist "studio\node_modules\vite\package.json" goto :install
+if not exist "node_modules\vite\bin\vite.js" goto :install
 goto :prepare
 
 :install
-echo [检查] 依赖未安装，执行 pnpm install ...
+where pnpm >nul 2>&1
+if errorlevel 1 goto :no_pnpm
+echo [setup] dependencies missing, running pnpm install ...
 call pnpm install --config.confirmModulesPurge=false
 if errorlevel 1 goto :install_fail
 
@@ -40,76 +44,75 @@ if errorlevel 1 goto :install_fail
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 if not exist "%~dp0logs" mkdir "%~dp0logs" >nul 2>&1
 
-rem Studio uses its own backend on 4610 and its own build dir .next-studio,
-rem isolated from the classic UI backend on 4600 (no .next overwrite).
-:p_backend
-powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort !BACKEND_PORT! -State Listen -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>&1
-if not errorlevel 1 goto :p_studio
+rem ---------- 1: stop anything already listening ----------
+echo [1/3] Stopping running services (if any) ...
+for %%P in (%BACKEND_PORT% %STUDIO_PORT%) do (
+  for /f "tokens=5" %%A in ('netstat -ano -p tcp ^| findstr ":%%P" ^| findstr "LISTENING"') do (
+    echo    port %%P - killing PID %%A
+    taskkill /PID %%A /T /F >nul 2>&1
+  )
+)
 
-echo [启动] Studio 后端 4610 ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'node.exe' -ArgumentList 'server.js' -WorkingDirectory '%~dp0' -RedirectStandardOutput '!BACKEND_LOG!' -RedirectStandardError '%~dp0logs\studio-backend.err.log' -WindowStyle Hidden"
-powershell -NoProfile -Command "$d=(Get-Date).AddSeconds(120); while((Get-Date) -lt $d){ if (Get-NetTCPConnection -LocalPort !BACKEND_PORT! -State Listen -ErrorAction SilentlyContinue) { exit 0 }; Start-Sleep -Seconds 2 }; exit 1" >nul 2>&1
+rem ---------- 2: backend ----------
+echo.
+echo [2/3] Starting backend %BACKEND_PORT% ...
+start "ic-backend" /min cmd /c "node server.js >> ""%BACKEND_LOG%"" 2>&1"
+powershell -NoProfile -Command "$d=(Get-Date).AddSeconds(120); while((Get-Date) -lt $d){ if (Get-NetTCPConnection -LocalPort %BACKEND_PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 }; Start-Sleep -Seconds 2 }; exit 1" >nul 2>&1
 if errorlevel 1 goto :backend_timeout
+echo    backend ready
 
-:p_studio
-powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort !STUDIO_PORT! -State Listen -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>&1
-if not errorlevel 1 goto :show
-
-echo [启动] Studio 前端 4710 ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c pnpm --filter studio dev' -WorkingDirectory '%~dp0' -RedirectStandardOutput '!STUDIO_LOG!' -RedirectStandardError '%~dp0studio\logs\studio.err.log' -WindowStyle Hidden"
-powershell -NoProfile -Command "$d=(Get-Date).AddSeconds(90); while((Get-Date) -lt $d){ if (Get-NetTCPConnection -LocalPort !STUDIO_PORT! -State Listen -ErrorAction SilentlyContinue) { exit 0 }; Start-Sleep -Seconds 2 }; exit 1" >nul 2>&1
+rem ---------- 3: frontend ----------
+echo.
+echo [3/3] Starting frontend %STUDIO_PORT% ...
+start "ic-frontend" /min cmd /c "cd /d ""%~dp0studio"" && node ..\node_modules\vite\bin\vite.js --port %STUDIO_PORT% --host 0.0.0.0 >> ""%STUDIO_LOG%"" 2>&1"
+powershell -NoProfile -Command "$d=(Get-Date).AddSeconds(90); while((Get-Date) -lt $d){ if (Get-NetTCPConnection -LocalPort %STUDIO_PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 }; Start-Sleep -Seconds 2 }; exit 1" >nul 2>&1
 if errorlevel 1 goto :studio_timeout
+echo    frontend ready
 
 :show
 echo.
-echo   Studio
-echo   http://127.0.0.1:!STUDIO_PORT!
-echo   局域网：http://[本机内网IP]:!STUDIO_PORT!
+echo   Studio    http://127.0.0.1:%STUDIO_PORT%
+echo   Backend   http://127.0.0.1:%BACKEND_PORT%
 echo.
-echo   Studio 后端
-echo   http://127.0.0.1:!BACKEND_PORT!
-echo   局域网：http://[本机内网IP]:!BACKEND_PORT!
+echo   Logs
+echo   %BACKEND_LOG%
+echo   %STUDIO_LOG%
 echo.
-echo   日志
-echo   !BACKEND_LOG!
-echo   !STUDIO_LOG!
-echo.
-powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyContinue) { Write-Host '  [OK] ComfyUI 8188 is running' } else { Write-Host '  [INFO] RunningHub mode; local ComfyUI not required' }"
-echo.
-echo 关闭本窗口不会停止服务，请使用 stop-studio.bat 停止 Studio（前端 + 独立后端）。
-echo 经典界面 4600 不受影响，停止它请使用 stop-infinite-creation.bat。
+echo   Two minimized windows are running: ic-backend / ic-frontend.
+echo   Closing this window keeps them alive. Run this file again to restart.
+echo   Run stop-studio.bat to stop them.
 goto :done
 
 :no_node
 echo.
-echo [错误] 未找到 node，请先安装 Node.js 22 或更高版本
+echo [ERROR] node not found. Install Node.js 22 or newer.
 goto :fail
 
 :no_pnpm
 echo.
-echo [错误] 未找到 pnpm，请先执行：npm i -g pnpm
+echo [ERROR] pnpm not found. Run: npm i -g pnpm
 goto :fail
 
 :install_fail
 echo.
-echo [错误] pnpm install 失败
+echo [ERROR] pnpm install failed.
 goto :fail
 
 :backend_timeout
 echo.
-echo [错误] Studio 后端 120 秒内未就绪，请查看 logs\studio-backend.log
+echo [ERROR] backend not ready in 120s. See logs\studio-backend.log
 goto :fail
 
 :studio_timeout
 echo.
-echo [错误] Studio 90 秒内未就绪，请查看 studio\logs\studio.log
+echo [ERROR] frontend not ready in 90s. See studio\logs\studio.log
 goto :fail
 
 :fail
 echo.
-pause
+if not "%IC_NO_PAUSE%"=="1" pause
 exit /b 1
 
 :done
-pause
+if not "%IC_NO_PAUSE%"=="1" pause
 exit /b 0

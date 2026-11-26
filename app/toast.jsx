@@ -1,5 +1,4 @@
 'use client';
-// SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 //
 // 两类交互，分开处理：
 // - 提示（toast）：非阻塞，右下角，一律不自动消失、点 × 关闭；

@@ -13,9 +13,12 @@ export async function GET(_req, { params }) {
 // 创建分镜（外部写入 API / 人工补镜）。只接受内容字段，见 lib/core/shot-write.js。
 export async function POST(req, { params }) {
   const { id } = await params;
-  if (!Projects.get(id)) return NextResponse.json({ error: '项目不存在' }, { status: 404 });
+  const project = Projects.get(id);
+  if (!project) return NextResponse.json({ error: '项目不存在' }, { status: 404 });
+  // 时长上限按项目视频模型（h3/2.0=15s，seedance25=30s）
+  const videoModel = project.video_model;
   const body = await req.json().catch(() => ({}));
-  const { patch, errors } = pickShotFields(body);
+  const { patch, errors } = pickShotFields(body, { videoModel });
   if (errors.length) return NextResponse.json({ error: errors.join('；') }, { status: 400 });
 
   // 分镜按「章节标题」归属（shots.chapter 存标题，与 Chapters.remove 的级联口径一致）。
@@ -30,7 +33,7 @@ export async function POST(req, { params }) {
   patch.chapter = chapter;
 
   // 新建：按「即将落库的值」做跨字段校验（台词速度 / 说话人数），默认时长与 Shots.create 一致
-  const contentErrors = validateShotContent(patch, {});
+  const contentErrors = validateShotContent(patch, {}, { videoModel });
   if (contentErrors.length) return NextResponse.json({ error: contentErrors.join('；') }, { status: 400 });
 
   // idx 是章内唯一键：显式给 idx 时也不能与本章已有分镜撞号（撞号会让成片顺序不确定）

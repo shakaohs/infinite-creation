@@ -6,6 +6,7 @@ import { fileUrl, dialogueSpeakers, statusColor } from './shared';
 import { nameMatches } from '../../lib/shared/index.js';
 import { useToast } from '../toast';
 import ShotMaterialPicker from './ShotMaterialPicker';
+import StoryboardImport from './StoryboardImport';
 import LoadingOverlay from './LoadingOverlay';
 
 const MATERIAL_FIELD = { character: 'character_ids', scene: 'scene_ids', prop: 'prop_ids', costume: 'costume_ids', age: 'age_ids', audio: 'audio_ids' };
@@ -29,6 +30,8 @@ export default function ShotsTab({ projectId, chapter: chapterProp = '', running
   const [editDuration, setEditDuration] = useState(null);
   // 导出/打包等耗时操作进行中：显示全屏加载层提示等待并阻断重复点击，操作结束后自动消失
   const [busy, setBusy] = useState(null);
+  // 分镜表导入弹窗（xlsx/csv/md → 本章分镜）
+  const [importOpen, setImportOpen] = useState(false);
   const load = useCallback(() => {
     return Promise.all([
       api.get('/api/projects/' + projectId + '/shots').then(setShots).catch((e) => toast.error(e.message)),
@@ -231,10 +234,18 @@ export default function ShotsTab({ projectId, chapter: chapterProp = '', running
       <div className="row justify-between">
         <h2 className="text-lg font-semibold m-0">分镜审查（{chapterProp ? chapterProp + ' · ' : ''}共 {shown.length} 镜）</h2>
         <div className="row" style={{ gap: 8 }}>
+          <Button size="sm" variant="flat" isDisabled={running} onPress={() => setImportOpen(true)}>📥 导入分镜表</Button>
           <Button size="sm" color="primary" isDisabled={!shown.length} onPress={exportChapter}>导出本章成片</Button>
           <Button size="sm" variant="flat" isDisabled={!doneShots.length || zipping} onPress={zipShots}>{zipping ? '打包中…' : '📦 打包下载片段'}</Button>
         </div>
       </div>
+      <StoryboardImport
+        projectId={projectId}
+        chapter={chapterProp}
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onDone={() => { load(); if (onRefresh) onRefresh(); }}
+      />
       {shown.map((s) => {
         const chars = charsOf(s), scenes = scenesOf(s), props = propsOf(s), costumes = costumesOf(s), ages = agesOf(s), audios = audiosOf(s);
         // 同一角色只显示一张图：挂了服装/年龄变体时变体图就是实际提交给模型的参考图

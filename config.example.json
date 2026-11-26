@@ -25,13 +25,55 @@
     "apiKey": "",
     "tier": "standard"
   },
+  "engines": [
+    {
+      "id": "eng-image-demo",
+      "name": "外接出图 API（示例）",
+      "kind": "image",
+      "enabled": false,
+      "tasks": ["t2i", "i2i"],
+      "baseUrl": "https://api.example.com",
+      "apiKey": "sk-xxx",
+      "model": "your-image-model",
+      "authHeader": "Authorization",
+      "authPrefix": "Bearer ",
+      "submitPath": "/v1/images/generations",
+      "pollPath": "/v1/images/generations/{taskId}",
+      "requestTemplate": "{\"model\":\"{model}\",\"prompt\":\"{prompt}\",\"negative_prompt\":\"{negative_prompt}\",\"aspect_ratio\":\"{aspect_ratio}\",\"resolution\":\"{resolution}\",\"image\":\"{image}\"}",
+      "taskIdPath": "data.taskId",
+      "statusPath": "data.status",
+      "doneValues": "succeeded,completed,done,success",
+      "failValues": "failed,error,fail",
+      "outputUrlPath": "data.output.url"
+    },
+    {
+      "id": "eng-video-demo",
+      "name": "Seedance 视频 API（示例）",
+      "kind": "video",
+      "enabled": false,
+      "tasks": ["r2v", "i2v", "t2v"],
+      "baseUrl": "https://api.example.com",
+      "apiKey": "sk-xxx",
+      "model": "seedance-2.5-pro",
+      "authHeader": "Authorization",
+      "authPrefix": "Bearer ",
+      "submitPath": "/v1/videos/generations",
+      "pollPath": "/v1/videos/generations/{taskId}",
+      "requestTemplate": "{\"model\":\"{model}\",\"prompt\":\"{prompt}\",\"aspect_ratio\":\"{aspect_ratio}\",\"resolution\":\"{resolution}\",\"duration\":\"{duration}\",\"images\":[{images_json}]}",
+      "taskIdPath": "data.taskId",
+      "statusPath": "data.status",
+      "doneValues": "succeeded,completed,done,success",
+      "failValues": "failed,error,fail",
+      "outputUrlPath": "data.output.url"
+    }
+  ],
   "hardware": {
     "mode": "nvidia"
   },
   "llm": {
-    "baseUrl": "http://tx3247.t.taoxiangyoushu.com",
+    "baseUrl": "https://api.siliconflow.cn/v1",
     "apiKey": "sk-xxx",
-    "model": "deepseek-v4-flash-vision-exp",
+    "model": "deepseek-ai/DeepSeek-V4.1-Flash",
     "tools": true,
     "vision": true
   },

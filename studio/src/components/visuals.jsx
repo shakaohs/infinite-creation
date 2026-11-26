@@ -138,6 +138,23 @@ export const RATIO_SELECT_ITEMS = VIDEO_ASPECT_RATIOS.map((r) => ({
   icon: <RatioIcon ratio={r} />,
 }));
 
+// 视频模型 = 分镜/提示词走哪条全流程（也是出片通道的依据）：
+//   h3        → forest-laoli-h3 全流程（六段式）+ 本地/云端 ComfyUI 出片
+//   seedance* → short-drama-director 老李全流程（七段式）+ 外接视频引擎出片（设置 →「线上引擎」里启用）
+export const VIDEO_MODEL_SELECT_ITEMS = [
+  { value: 'h3', label: 'MiniMax H3（H3 全流程）' },
+  { value: 'seedance25', label: 'Seedance 2.5（老李全流程）' },
+  { value: 'seedance20', label: 'Seedance 2.0（老李全流程）' },
+];
+
+// 段缝衔接（D 锁）：无人值守下由项目设置传入，Agent 不再询问
+export const SEAM_SELECT_ITEMS = [
+  { value: 'auto', label: '自动' },
+  { value: 'tail_frame', label: '尾帧锚定' },
+  { value: 'hard_cut', label: '换机位硬切' },
+  { value: 'empty_shot', label: '空镜过渡' },
+];
+
 export function MetaItem({ icon: Icon, children, className }) {
   return (
     <span className={'inline-flex items-center gap-1 ' + (className || '')}>

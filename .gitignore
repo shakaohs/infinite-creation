@@ -22,5 +22,29 @@ __pycache__/
 # 测试素材（本地使用，不入库）
 docs/test/
 
+# 内部审计文档（项目现状/赛道审计/历史问题复核，不对外公开）
+docs/rebuild-v2/
+
 # 构建时重定向 HOME 用的临时目录（start-studio-prod.bat 创建）
 .build-home/
+
+# 本地备份 / 临时改名文件（config.json.bak-*、SKILL.md.bak-*、*.bak-upstream 等）
+*.bak
+*.bak_*
+*.bak-*
+*.bak[0-9]*
+
+# config.json 的所有变体（含明文密钥，绝不入库）
+config.json.*
+
+# 依赖清理遗留目录
+node_modules.trash*/
+
+# 运行时日志
+logs/
+
+# 本地 Agent 工作状态
+.workbuddy/
+
+# Windows 快捷方式
+*.lnk

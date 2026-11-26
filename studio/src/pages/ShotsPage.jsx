@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, Clapperboard, Clock, Download, Film, Hash, Package, Pencil, Play, Plus, Wand2, X } from 'lucide-react';
+import { ChevronDown, Clapperboard, Clock, Download, Film, Hash, Package, Pencil, Play, Plus, Upload, Wand2, X } from 'lucide-react';
 import { api, uploadForm } from '../lib/api.js';
 import CostButton from '../components/CostButton.jsx';
 import { fileUrl, STATUS_TEXT, withSession } from '../lib/format.js';
@@ -10,6 +10,7 @@ import { Badge, Button, EmptyState, Input, Select, Spinner, StatusPill, Textarea
 import { BusyOverlay, Modal } from '../components/overlays.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import MaterialPicker from '../components/MaterialPicker.jsx';
+import StoryboardImportDialog from '../components/StoryboardImportDialog.jsx';
 import { ImageLightbox } from '../components/media.jsx';
 import { useToast } from '../components/toast.jsx';
 
@@ -34,6 +35,8 @@ export default function ShotsPage({ projectId, chapters = [], cursorId, onCursor
   const [ask, setAsk] = useState(null);
   const [loading, setLoading] = useState(true);
   const [materialPicker, setMaterialPicker] = useState(null);
+  // 分镜表批量导入（一表行 = 一分镜，自动解析资产引用）
+  const [importOpen, setImportOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   // 单镜提交中：只锁这一镜的按钮，不拉全屏遮罩（否则点一下整个页面像卡死）
   const [submitting, setSubmitting] = useState('');
@@ -499,8 +502,13 @@ export default function ShotsPage({ projectId, chapters = [], cursorId, onCursor
         title="分镜审查"
         description="逐镜检查画面、台词与参考素材；确认无误后再生成视频，避免返工。"
         actions={
-          canGenerate || canExport ? (
+          canEdit || canGenerate || canExport ? (
             <>
+              {canEdit ? (
+                <Button variant="secondary" size="md" disabled={running} onClick={() => setImportOpen(true)} title="粘贴或上传分镜表，批量生成分镜并自动绑定资产">
+                  <Upload size={13} /> 批量导入分镜表
+                </Button>
+              ) : null}
               {canExport && features.buttons?.export !== false ? (
                 <CostButton
                   variant="primary"
@@ -519,6 +527,15 @@ export default function ShotsPage({ projectId, chapters = [], cursorId, onCursor
             </>
           ) : null
         }
+      />
+
+      <StoryboardImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        projectId={projectId}
+        chapters={chapters}
+        defaultChapterId={cursorId}
+        onImported={async () => { await load(); if (onRefresh) onRefresh(); }}
       />
 
       <div className="panel flex flex-wrap items-center gap-3 px-3 py-2.5">

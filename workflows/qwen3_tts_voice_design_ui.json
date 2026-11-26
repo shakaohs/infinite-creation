@@ -16,7 +16,7 @@
     "inputs": {
       "text": "你好呀，我是沈舒妍，喜欢安静的午后和温暖的光，很高兴认识你。",
       "voice_description": "16-18软甜清润的少女音，甜而不腻，温柔里透着精致的大小姐质感。",
-      "language": "Auto",
+      "language": "Chinese",
       "seed": 798671063927382,
       "max_new_tokens": 2048,
       "temperature": 1,

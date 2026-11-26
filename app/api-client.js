@@ -1,4 +1,3 @@
-// SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 const BASE = '';
 
 async function req(method, url, body) {

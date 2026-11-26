@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { STYLE_CUSTOM, resolveStyle, splitStyle, VIDEO_RESOLUTION_CUSTOM, IMAGE_RESOLUTION_ITEMS } from '../lib/shared.js';
-import { RESOLUTION_SELECT_ITEMS, RATIO_SELECT_ITEMS } from './visuals.jsx';
+import { RESOLUTION_SELECT_ITEMS, RATIO_SELECT_ITEMS, VIDEO_MODEL_SELECT_ITEMS, SEAM_SELECT_ITEMS } from './visuals.jsx';
 import { Button, Field, Input, Select, Switch } from './ui.jsx';
 import { FormSection, Modal } from './overlays.jsx';
 import { useToast } from './toast.jsx';
@@ -14,11 +14,13 @@ export default function ProjectSettingsDialog({ open, onOpenChange, project, onS
   const [customStyle, setCustomStyle] = useState('');
   const [res, setRes] = useState('480P');
   const [ratio, setRatio] = useState('16:9');
+  const [videoModel, setVideoModel] = useState('h3');
+  const [seam, setSeam] = useState('auto');
   const [imageRes, setImageRes] = useState('1K');
   const [cw, setCw] = useState('');
   const [ch, setCh] = useState('');
   const [enableBgm, setEnableBgm] = useState(true);
-  const [enableSub, setEnableSub] = useState(true);
+  const [enableSub, setEnableSub] = useState(false);
   const [autoScript, setAutoScript] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -30,6 +32,8 @@ export default function ProjectSettingsDialog({ open, onOpenChange, project, onS
     setCustomStyle(init.custom);
     setRes(project.video_resolution || '480P');
     setRatio(project.video_aspect_ratio || '16:9');
+    setVideoModel(project.video_model || 'h3');
+    setSeam(project.seam || 'auto');
     setImageRes(project.image_resolution || '1K');
     setCw(project.video_width ? String(project.video_width) : '');
     setCh(project.video_height ? String(project.video_height) : '');
@@ -49,6 +53,8 @@ export default function ProjectSettingsDialog({ open, onOpenChange, project, onS
         video_width: Number(cw) || 0,
         video_height: Number(ch) || 0,
         image_resolution: imageRes,
+        video_model: videoModel,
+        seam: seam,
         enable_bgm: enableBgm,
         enable_subtitles: enableSub,
         auto_script: autoScript,
@@ -105,6 +111,12 @@ export default function ProjectSettingsDialog({ open, onOpenChange, project, onS
               <Select value={ratio} onChange={setRatio} items={RATIO_SELECT_ITEMS} />
             </Field>
           </div>
+          <Field label="视频模型" hint="H3 走本地/云端 ComfyUI 出片；Seedance 后期外接视频生成接口。">
+            <Select value={videoModel} onChange={setVideoModel} items={VIDEO_MODEL_SELECT_ITEMS} />
+          </Field>
+          <Field label="段缝衔接" hint="相邻镜头/多段的衔接方式；自动=按情绪节拍判断。">
+            <Select value={seam} onChange={setSeam} items={SEAM_SELECT_ITEMS} />
+          </Field>
           {res === VIDEO_RESOLUTION_CUSTOM ? (
             <div className="grid grid-cols-2 gap-3">
               <Field label="宽度（px）">

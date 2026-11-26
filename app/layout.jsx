@@ -1,4 +1,3 @@
-// SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import './globals.css';
 import { Providers } from './providers';
 

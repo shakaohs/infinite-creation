@@ -9,7 +9,10 @@ export const dynamic = 'force-dynamic';
 // 不必逐条撤。默认 replace=true（先清空该章旧分镜再写入），与「重写这一章」的语义一致。
 export async function PUT(req, { params }) {
   const { id, cid } = await params;
-  if (!Projects.get(id)) return NextResponse.json({ error: '项目不存在' }, { status: 404 });
+  const project = Projects.get(id);
+  if (!project) return NextResponse.json({ error: '项目不存在' }, { status: 404 });
+  // 时长上限按项目视频模型（h3/2.0=15s，seedance25=30s）
+  const videoModel = project.video_model;
   const chapter = Chapters.get(cid);
   if (!chapter || chapter.project_id !== id) return NextResponse.json({ error: '章节不存在' }, { status: 404 });
   // replace 会删掉该章现有分镜（含已渲染、status=done 的行）：正在运行的任务持有这些行，
@@ -34,11 +37,11 @@ export async function PUT(req, { params }) {
   const picked = [];
   const usedIdx = new Map();
   for (let i = 0; i < list.length; i++) {
-    const { patch, errors } = pickShotFields(list[i]);
+    const { patch, errors } = pickShotFields(list[i], { videoModel });
     if (errors.length) return NextResponse.json({ error: 'shots[' + i + ']：' + errors.join('；') }, { status: 400 });
     // 章节由 URL 决定：body 里带的 chapter 一律覆盖，再校验（避免 body 传空 chapter 被误拒）
     patch.chapter = chapter.title;
-    const contentErrors = validateShotContent(patch, {});
+    const contentErrors = validateShotContent(patch, {}, { videoModel });
     if (contentErrors.length) return NextResponse.json({ error: 'shots[' + i + ']：' + contentErrors.join('；') }, { status: 400 });
     if (patch.idx == null) patch.idx = base + i + 1;
     if (usedIdx.has(patch.idx)) {

@@ -1,5 +1,4 @@
 'use client';
-// SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 
 import { useEffect, useState } from 'react';
 import { Button } from '@heroui/react';

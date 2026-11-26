@@ -2,7 +2,7 @@
 
 # Agent无限创作 · 把你的故事变成亿帧画面
 
-**源码可见、非商业免费使用的本地 Agent 全自动视频生成 ✨**
+**免费开源项目本地 Agent 全自动视频生成 ✨**
 上传小说 / 剧本，本地一键生成任意时长的成片，全程无人值守。
 
 <a href="https://github.com/SwotAtmk/infinite-creation/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/SwotAtmk/infinite-creation?style=for-the-badge&color=F5B700&label=stars"></a> <a href="README_EN.md"><img alt="English" src="https://img.shields.io/badge/README-English-555?style=for-the-badge"></a> <a href="https://github.com/SwotAtmk/infinite-creation/blob/main/LICENSE"><img alt="PolyForm-NC 1.0.0" src="https://img.shields.io/badge/licence-PolyForm--NC--1.0.0-4B5563?style=for-the-badge"></a> <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-%3E%3D22-339933?style=for-the-badge"></a> <a href="https://space.bilibili.com/384196392?spm_id_from=333.1007.0.0"><img alt="我的B站" src="https://img.shields.io/badge/bilibili-SwotAtmk-blue?style=for-the-badge&logo=bilibili&logoColor=%2300A1D6"></a>
@@ -156,6 +156,10 @@ pnpm run dev              # 默认启动 Studio，打开 http://127.0.0.1:4710
 请根据 https://gitcode.com/SwotAtmk/infinite-creation/releases/download/v1.0.0/install-skill.md，
 从GitHub（国外）或者GitCode（国内）上安装SwotAtmk/infinite-creation 安装 infinite-creation 技能，并根据技能描述启动这个项目。
 ```
+
+## 部署视频教程
+**【免费开源的 AI 无限创作工具｜项目部署教程】**
+[https://www.bilibili.com/video/BV1MKyrzxEgz/?share_source=copy_web&vd_source=4de78f3e6122809eba5fa7ced06ef5ae](https://www.bilibili.com/video/BV1MKyrzxEgz/?share_source=copy_web&vd_source=4de78f3e6122809eba5fa7ced06ef5ae)
 
 ## 运行配置
 
@@ -326,6 +330,10 @@ git clone https://github.com/happymy/MinimaxH3-7900xtx.git
    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=swotatmk/infinite-creation&type=date&legend=bottom-right" />
  </picture>
 </a>
+
+## 反馈建议
+
+使用中遇到问题、发现 Bug，或有想要的新功能，欢迎填写 [infinite-creation 无限创作项目需求 & 反馈建议收集表](https://docs.qq.com/form/page/DUGZ6ekNsQ1pma2Zs)，也可以直接在 [GitHub Issues](https://github.com/SwotAtmk/infinite-creation/issues) 反馈。
 
 ## 许可证与商用授权
 

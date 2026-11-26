@@ -1,0 +1,594 @@
+{
+  "14": {
+    "inputs": {
+      "audio": "1bcd41a7aef3be7f7107e99ab12fb44ebee4e35899aefe1c1bafa304afd82f9f.wav"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
+    }
+  },
+  "15": {
+    "inputs": {
+      "audio": "None"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
+    }
+  },
+  "19": {
+    "inputs": {
+      "image": "9f498c6db37506e2cd3f696a6245098803b5276cbb0c696b406a97d5b38dd349.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "23": {
+    "inputs": {
+      "image": "a4db20c8552ad8ec71513540eaf70edada77ff4dd863eaa814b0e4dbadc2995d.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "36": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "37": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_ultra_uncensored_heretic_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "43": {
+    "inputs": {
+      "image": "ace603364b370ea519e3a42149d4a063a698011dda1b6e8f4ab59afa8a008f2c.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "48": {
+    "inputs": {
+      "audio": "f17ebbb10ebb7acaed98e59ef50b77fcf76aa6c124e1af93066e4f044da15c93.wav"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
+    }
+  },
+  "49": {
+    "inputs": {
+      "image": "cb748ab72b64ded3490acd761726b17bdb16723621348363199b432a9184baf3.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "50": {
+    "inputs": {
+      "image": "633122cf99c470d440b71a12373981aa10c69dad9633a5b219adfb0a82ab4d33.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "51": {
+    "inputs": {
+      "image": "95eca29994460af7e9812f1d1b2c7de01f7c3c5ca5cc3cfdc5f88d1b1765766f.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "53": {
+    "inputs": {
+      "lora_name": "minimax_h3_dmad_full_dareties_v4_step600_comfy_fro.safetensors",
+      "strength_model": 0.8000000000000002,
+      "model": [
+        "192",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "192": {
+    "inputs": {
+      "unet_name": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "199": {
+    "inputs": {
+      "image": "None"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "200": {
+    "inputs": {
+      "image": "None"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "201": {
+    "inputs": {
+      "image": "None"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "250": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "259",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "数学表达式",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "252": {
+    "inputs": {
+      "aspect_ratio": "9:16 (Portrait Widescreen)",
+      "megapixels": 1.2,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "分辨率选择器",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "253": {
+    "inputs": {
+      "samples": [
+        "397",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.0"
+    }
+  },
+  "254": {
+    "inputs": {
+      "samples": [
+        "397",
+        0
+      ],
+      "vae": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE解码（音频）"
+    }
+  },
+  "255": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "259": {
+    "inputs": {
+      "value": 6
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "视频时长（秒）",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "261": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 14,
+      "denoise": 1,
+      "model": [
+        "329",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "基本调度器"
+    }
+  },
+  "263": {
+    "inputs": {
+      "text": "subject_definitions:\n\n<Subject 1> is Jiang Zhiwei, the woman in <Picture 1>: a woman in her early forties, dark hair pulled back in a neat low knot, a soft plain face with natural bare skin, wearing a light beige knit cardigan over a pale shirt and light khaki trousers. Preserve her facial appearance, hairstyle, clothing and body proportions.\n\n<Subject 2> is the loaded luggage cart: a metal luggage cart stacked with several suitcases, positioned beside Jiang Zhiwei. It remains the same cart from the previous segment.\n\n<Subject 3> is the dockside environment in <Picture 6>: a white cruise ship with a banner and lifebuoys at the berth, a white shuttle parked in the dockside parking area, and a glass-walled boarding hall beneath a steel canopy in the distance. Preserve the environmental layout.\n\n<Audio 1> is the voice-timbre reference for <Subject 1> (S1), preserving her established soft, natural adult female voice.\n\n\nsummary:\n\n[reference generation + audio reference] After ending the phone call, Jiang Zhiwei lowers her phone, turns, and pushes the loaded luggage cart alone toward the boarding hall. In an internal voiceover, she tells herself this is the last chance she will give Cheng Yuanzhou. The camera follows her from behind as she walks away.\n\n\nretention_analysis:\n\n<Subject 1> (image): fully_preserved — preserve her face, hairstyle, beige cardigan, pale shirt, khaki trousers, and body proportions. Her phone, hand, and standing posture carry over from the previous segment.\n\n<Subject 2> (image): fully_preserved — the loaded luggage cart and its suitcases are retained.\n\n<Subject 3> (image): partially_preserved — the cruise ship, boarding hall, and dockside layout are retained; camera angles are free.\n\n<Audio 1> (audio): reference — use the established female voice reference for Jiang Zhiwei, preserving her soft, natural adult female voice and Mandarin pronunciation. The line is delivered as an internal voiceover, not spoken aloud.\n\n\ndetailed_description:\n\nCinematic realism, natural restrained acting, subtle facial expressions, realistic skin texture, vertical 9:16 framing. Accurate Chinese lip synchronization for any visible speech.\n\n[Shot 1]\n\nOne continuous shot, the camera following Jiang Zhiwei as she walks away.\n\nThe shot begins from the exact final posture of the previous segment: Jiang Zhiwei stands beside the loaded luggage cart, her body and face oriented toward the left side of the frame, turned about 30 degrees to her left. The camera opens in a frontal three-quarter view, slightly offset toward her left-front side, at chest height in a medium close-up, so her face is clearly visible.\n\nJiang Zhiwei first lowers the mobile phone from her ear, her hand coming down to her side, and she slips the phone away. She does not wipe her face or make any unnecessary gesture.\n\nShe then turns her body toward the luggage cart, placing both hands on the cart handle. She begins to push the loaded luggage cart forward, walking slowly and steadily toward the boarding hall in the distance. Her steps are natural and unhurried.\n\nAs she starts walking, the camera moves to follow her from behind, framing her back and the luggage cart she pushes. The camera tracks her at a matching pace, keeping her back, the cart, and the path ahead in frame. The boarding hall remains visible in the distance as her destination.\n\nWhile she walks, her voice is heard in an internal voiceover, not spoken aloud; her lips remain closed:\n\n<Subject 1> (S1) says in an off-screen voiceover, while her lips remain completely closed:\n<d>[Chinese] 程远舟，这是我给你的最后一次机会。</d>\n\nShe keeps walking at a steady pace, pushing the cart, and the shot ends with her back and the cart still moving away toward the boarding hall.\n\nNo subtitles, no captions, no on-screen text, no text overlays.\n\n\noverall_soundscape:\n\nThe soft coastal port ambience continues, with a gentle sea breeze and distant gulls. The luggage cart rolls with a steady, soft wheel sound over the concrete as Jiang Zhiwei pushes it. Her footsteps are light and steady. The voiceover is clear and intimate, slightly above the ambient sound.\n\n\nnon_diegetic_music:\n\nVery subtle, restrained piano background music continues, holding a quiet, resigned emotional tone as Jiang Zhiwei walks away alone. The music stays low beneath her voiceover so every word remains clear.\n"
+    },
+    "class_type": "Text",
+    "_meta": {
+      "title": "𝙆 文本"
+    }
+  },
+  "265": {
+    "inputs": {
+      "prompt": [
+        "263",
+        0
+      ],
+      "width": [
+        "252",
+        0
+      ],
+      "height": [
+        "252",
+        1
+      ],
+      "length": [
+        "250",
+        1
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ],
+      "audio_vae": [
+        "37",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "51",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "49",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "50",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "43",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "19",
+        0
+      ],
+      "ref_images.ref_image_5": [
+        "23",
+        0
+      ],
+      "ref_images.ref_image_6": [
+        "199",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "48",
+        0
+      ],
+      "ref_audios.ref_audio_1": [
+        "14",
+        0
+      ],
+      "ref_audios.ref_audio_2": [
+        "15",
+        0
+      ],
+      "ref_images.ref_image_7": [
+        "200",
+        0
+      ],
+      "ref_images.ref_image_8": [
+        "201",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 参考转视频"
+    }
+  },
+  "307": {
+    "inputs": {},
+    "class_type": "忽略多组孤海",
+    "_meta": {
+      "title": "忽略多组 孤海"
+    }
+  },
+  "308": {
+    "inputs": {},
+    "class_type": "忽略多组孤海",
+    "_meta": {
+      "title": "忽略多组 孤海"
+    }
+  },
+  "309": {
+    "inputs": {},
+    "class_type": "忽略多组孤海",
+    "_meta": {
+      "title": "忽略多组 孤海"
+    }
+  },
+  "328": {
+    "inputs": {
+      "conditioning": [
+        "265",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "329": {
+    "inputs": {
+      "max_resolution": 1024,
+      "jpeg_quality": 80,
+      "suppress_default_preview": true,
+      "preview_frames": 1024,
+      "preview_fps": 24,
+      "tiny_vae": "taeh3_full.safetensors",
+      "model": [
+        "401",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ],
+      "audio_vae": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "ModelPreviewOverrideKJ",
+    "_meta": {
+      "title": "Model Preview Override"
+    }
+  },
+  "331": {
+    "inputs": {
+      "attention": "comfy kitchen attention",
+      "model": [
+        "400",
+        0
+      ]
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "模型注意力后端"
+    }
+  },
+  "332": {
+    "inputs": {
+      "selection": "sol-attn",
+      "selection.tau": 1.3,
+      "start_percent": 0.2,
+      "end_percent": 1,
+      "dense_blocks": "",
+      "min_tokens": 12288,
+      "extra_tokens": 256,
+      "sink_conditioning": "exact_kv_and_rows",
+      "verbose": true,
+      "model": [
+        "331",
+        0
+      ]
+    },
+    "class_type": "BlockSparseAttention",
+    "_meta": {
+      "title": "模型稀疏注意力"
+    }
+  },
+  "333": {
+    "inputs": {
+      "shift_video": 12,
+      "shift_audio": 3.0000000000000004,
+      "model": [
+        "332",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3SigmaShift",
+    "_meta": {
+      "title": "MiniMax H3 Sigma Shift"
+    }
+  },
+  "363": {
+    "inputs": {},
+    "class_type": "忽略多组孤海",
+    "_meta": {
+      "title": "忽略多组 孤海"
+    }
+  },
+  "364": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "YZ_H3_",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "253",
+        0
+      ],
+      "audio": [
+        "254",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "397": {
+    "inputs": {
+      "seed": 822970154456878,
+      "cfg": 1,
+      "transition_step": 6,
+      "lowres_scale": 0.6000000000000001,
+      "rho": 0,
+      "w_min": 0.5,
+      "w_max": 1,
+      "upscaler_model": "h3_upscaler_lms_v0.1.safetensors",
+      "highres_tiling": false,
+      "upscaler_unload": true,
+      "model": [
+        "329",
+        0
+      ],
+      "positive": [
+        "265",
+        0
+      ],
+      "negative": [
+        "328",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ],
+      "latent_image": [
+        "265",
+        1
+      ],
+      "sampler": [
+        "255",
+        0
+      ],
+      "sigmas": [
+        "261",
+        0
+      ]
+    },
+    "class_type": "SelfLiftH3Sampler",
+    "_meta": {
+      "title": "SelfLift Progressive Sampler (MiniMax H3)"
+    }
+  },
+  "400": {
+    "inputs": {
+      "lora_name": "MysticXXX_MMH3-V1.safetensors",
+      "strength_model": 0.3500000000000001,
+      "model": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "401": {
+    "inputs": {
+      "chunks": 4,
+      "seq_threshold": 4096,
+      "model": [
+        "333",
+        0
+      ]
+    },
+    "class_type": "MiniMaxChunkFeedForward",
+    "_meta": {
+      "title": "MiniMax H3 Chunk FeedForward"
+    }
+  }
+}

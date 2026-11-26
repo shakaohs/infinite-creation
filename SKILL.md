@@ -94,15 +94,26 @@ curl http://127.0.0.1:4610/api/health # 期望 {"ok":true}
 - 脱离本项目时：直接把 `skills/` 当作可移植技能包使用（每个 `SKILL.md` 自带触发条件与执行步骤）。
 - **路由规则**：按任务关键词路由到对应技能；未命中时默认走 `novel-to-video`（总流水线）。
 
-### 核心流程技能（5 个，必读）
+### 核心流程技能（必读）
 
 | 技能 | 用途 | 调用时机 |
 |------|------|----------|
 | `novel-to-video` | 总流水线（全链路编排） | 用户要「小说 → 成片」 |
-| `story-pipeline-cn` | 小说→剧本→分镜拆分（模式 A/B/C） | 写剧本、拆分镜 |
-| `image-prompt-writing` | 图片/图生图提示词规范 | 写资产生图/换装/年龄提示词 |
-| `h3-prompt-writing` | MiniMax H3 视频提示词 + 参考标签规范 | 写逐镜视频提示词 |
+| **`forest-laoli-h3`** | **H3 全流程（G0 锁 → 剧本 → 资产 → 分镜 → 六段式投喂 → 清洗机检 → 交付 → 收尾复检）** | 项目视频模型 = `h3`：分镜与视频提示词都走它 |
+| **`short-drama-director`** | **漫剧老李全流程（五道锁 → 剧本 → 资产 → 分镜 → 七段式投喂 → 质检）** | 项目视频模型 = `seedance25` / `seedance20`：分镜与提示词都走它 |
+| `sd-script-engine` | 剧本创作与小说改编 | 写剧本、改台词 |
+| `sd-asset-engine` | 资产三清单与出图提示词 | 写角色/场景/道具提示词 |
+| `image-prompt-writing` / `z-image-prompt-writing` | 图片/图生图提示词规范 | 写资产生图/换装/年龄提示词 |
 | `tts-voice-design` | 人物音色设计规范 | 设计人物音色 |
+
+**两条全流程按「视频模型」二选一，不允许混用**（镜行语言、投喂格式、机检脚本三者必须同源）：
+
+| 视频模型 | 分镜技能 | 提示词格式 | 机检脚本 |
+|---|---|---|---|
+| `h3` | `forest-laoli-h3`（+ `references/00-framework-adapter.md` 适配层） | 六段式（正文英文） | `forest-laoli-h3/scripts/h3_lint.py` + `h3_finalcheck.py` |
+| `seedance25` / `seedance20` | `short-drama-director`（+ `sd-storyboard-engine` / `sd-combat-engine` / `sd-real-engine` / `sd-xuanhuan-engine`） | 七段式（中文栏位） | `short-drama-director/scripts/validate_prompt.py` |
+
+两份全流程技能是**上游原包沿用 + 框架适配层**：H3 的原包 `SKILL.md` 与 `references/` 未改，只追加了 `references/00-framework-adapter.md`（阶段映射、覆盖声明、字段对应）；老李的上游总控（137KB）保留为 `SKILL.upstream-v7.5.0.md`，`SKILL.md` 换成框架内执行入口（同目录 `references/` 全部原样保留）。适配层的统一原则：**上游「停下询问 / 弹卡 / 建契约表 / 跑脚本 / 剥壳投递」这类交互门在流水线内一律作废**，锁位由项目锁卡给全，机检由后端跑脚本完成。
 
 ### 其余技能库（按类别）
 
@@ -141,6 +152,57 @@ curl http://127.0.0.1:4610/api/health # 期望 {"ok":true}
 **方式 A · 启动本项目（推荐，自动）**：工作流页粘贴 ComfyUI 工作流 JSON → 「分析节点/角色」→「注册工作流 + 生成技能」。系统会：解析节点（加载器/提示词/尺寸/种子/保存）→ 推导规格 → 注册到 `workflows/` + DB → 调用 LLM 起草 `SKILL.md` 并安装为可路由技能 → Agent 立即可当新「工作模式」调用。
 
 **方式 B · 不启动本项目（Agent 手工映射）**：Agent 按上方「工作流规格」字段，把用户提供的 ComfyUI JSON 手动整理成规格（roles/media/outputs/prune），再复刻 `workflow-runner` 的「克隆模板 → 写 roles 参数 → 绑定 media 参考 → prune 无效节点 → 提交 ComfyUI」流程。解析逻辑参考 `analyzeWorkflow()`（识别 LoadImage/LoadAudio/LoadVideo、Save*、KSampler、prompt/text 字段、seed、尺寸）。
+
+### 方式 C · 外接线上生成 API（出图 / 出视频，Seedance 走这条）
+
+除了 ComfyUI 与 RunningHub，还可以接**任意「提交 → 轮询 → 下载」形态的线上 API**（即梦 Seedance、通义万相、可灵、Liblib、Runway、Pika…）。
+配置在 `config.json` 的 `engines[]`（界面：设置 →「线上引擎」），字段见 `lib/core/engine-http.js`：
+
+- `kind`：`image`（接 t2i 文生图 / i2i 图生图）或 `video`（接 r2v / i2v / t2v / digital_human）
+- `enabled`：**只有 `true` 才生效**（配了一半的引擎不会被自动拿去跑生产）
+- `tasks`：只接管哪几种任务（如 `["r2v"]`），不写 = 该类型全接
+- `requestTemplate`：请求体模板，占位符 `{prompt} {prompt_json} {negative_prompt} {model} {aspect_ratio} {resolution} {duration} {width} {height} {seed} {image} {images_json} {videos_json} {audios_json} {apiKey}`
+  - **`{prompt_json}` 优先用**：它是带引号的 JSON 字符串（模板里写 `"text": {prompt_json}`）。`{prompt}` 虽然已自动转义引号与换行，但台词本身满是引号的场景，用 `{prompt_json}` 最稳。
+- `extraHeaders`：额外 header（值支持 `{apiKey}` 占位）。通义万相必须 `X-DashScope-Async: enable`、Runway 必须 `X-Runway-Version`
+- `pollMethod` / `pollBody`：轮询方法默认 GET；硅基流动这类「查询也是 POST」的平台写 `POST` + body 模板
+- `syncMode`：**同步接口**（提交即出图，无 taskId / 无轮询），图片平台基本都走这条
+- `outputUrlPath`：产物路径，**支持数组下标**（`creations[0].url` / `output[0]` / `results.videos[0].url`）
+
+### 主流平台模板（设置 →「线上引擎」→「主流平台」）
+
+13 个平台已内置模板，选中即自动填好 endpoint / 路径 / 请求体 / 取值路径，**只需补 API Key 与模型名**（模板定义在 `lib/core/engine-presets.js`，接口 `GET /api/engines/presets`）。
+
+| 类型 | 平台 | 形态 | 可直接用 |
+|---|---|---|---|
+| 视频 | 火山方舟 · 即梦 Seedance | 轮询 | ✅ |
+| 视频 | 阿里百炼 · 通义万相 Wan | 轮询（需 X-DashScope-Async） | ✅ |
+| 视频 | 硅基流动 · Wan/混元/LTX | POST 轮询 | ✅ |
+| 视频 | Vidu 生数 | 轮询（前缀是 `Token `） | ✅ |
+| 视频 | Runway Gen-4 | 轮询（需 X-Runway-Version） | ✅ |
+| 视频 | Luma Dream Machine | 轮询 | ✅ |
+| 视频 | 智谱 · CogVideoX | 轮询 | ✅ |
+| 视频 | MiniMax 海螺 | 两段式（file_id 需再换 url） | ❌ 需网关 |
+| 视频 | 可灵 Kling | JWT 现签（AK/SK） | ❌ 需网关 |
+| 图片 | 火山方舟 · Seedream | 同步 | ✅ |
+| 图片 | 阿里百炼 · 通义万相图片 | 同步 | ✅ |
+| 图片 | 硅基流动 · FLUX/SD | 同步 | ✅ |
+| 图片 | OpenAI 兼容（通用） | 同步 | ✅ |
+
+两个标 ❌ 的不是配置问题：MiniMax 轮询只给 `file_id`（还要再调 `/v1/files/retrieve`），可灵要运行时用 AK+SK 签 JWT —— 都需要自建一层网关，界面里选它们会直接提示原因。
+
+分流点在 `runWorkflow`（全部渲染的唯一收口点，见 `lib/core/engine-runner.js`）：命中引擎就换执行端，上层资产图/分镜视频的调用方一行都不用改；
+参考图以 data URL 随请求体发出（`references[].localPath`），产物下载后直接落盘进项目素材库/分镜候选。
+**典型用法**：视频引擎只勾「参考生视频（r2v）」，让分镜视频走 Seedance API，资产图仍走本地 ComfyUI。
+
+### 分镜表批量导入（已有分镜表时最快的入口）
+
+手上有现成分镜表时，不必让 Agent 重写：`POST /api/projects/:id/chapters/:cid/storyboard/import`
+（界面：分镜审查 → 右上「批量导入分镜表」）。支持 **Markdown 表格 / CSV / TSV / JSON**，一行 = 一分镜：
+
+- 表头自动识别：镜号 / 时长 / 场次 / 景别·机位·运镜 / 画面 / 台词 / 旁白 / 时间轴 / 角色 / 场景 / 道具 / 服装 / 年龄 / 音频
+- 资产引用按列解析成真实资产 id（规范化全等 → 去括号全等 → 唯一包含），缺的自动建资产占位，匹配不上的逐条回报不硬绑
+- 先 `dryRun:true` 出预览（行数 / 命中 / 新建 / 未匹配），确认后再落库；`replace:false` 可追加到本章末尾
+- 落库走与整章写入同一套内容校验（时长 1–15s、台词 ≤3.5 字/秒、单镜 ≤2 说话人），整批一个事务
 
 ## 六、外部 Agent 通过 API 写入内容（harness 写入）
 

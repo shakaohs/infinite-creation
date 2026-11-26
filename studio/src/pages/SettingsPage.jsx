@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Cloud,
   Film,
+  Globe,
   Lock,
   Save,
   Server,
@@ -28,12 +29,13 @@ import {
   VIDEO_RESOLUTION_CUSTOM,
 } from '../lib/shared.js';
 import { Badge, Button, EmptyState, Field, Input, Segmented, Select, Spinner, Switch } from '../components/ui.jsx';
-import { RESOLUTION_SELECT_ITEMS, RATIO_SELECT_ITEMS } from '../components/visuals.jsx';
+import { RESOLUTION_SELECT_ITEMS, RATIO_SELECT_ITEMS, VIDEO_MODEL_SELECT_ITEMS, SEAM_SELECT_ITEMS } from '../components/visuals.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import SkillsPanel from '../components/SkillsPanel.jsx';
 import SkillPipelinePanel from '../components/SkillPipelinePanel.jsx';
 import SubtitlePanel from '../components/SubtitlePanel.jsx';
 import WorkflowConfigPanel from '../components/WorkflowConfigPanel.jsx';
+import EnginesPanel from '../components/EnginesPanel.jsx';
 import { useToast } from '../components/toast.jsx';
 
 const TIER_OPTIONS = RUNNINGHUB_TIERS.map((t) => ({ value: t.id, label: t.label }));
@@ -47,6 +49,7 @@ const REWRITE_LANG_OPTIONS = [
 const CATEGORIES = [
   { id: 'general', label: '通用配置', desc: '分镜数量 · 任务调度', icon: SlidersHorizontal },
   { id: 'comfyui', label: 'ComfyUI 服务', desc: '执行端 · 并发队列', icon: Server },
+  { id: 'engines', label: '线上引擎', desc: '出图/出视频 · 通用 HTTP 引擎', icon: Globe },
   { id: 'llm', label: 'LLM 模型', desc: 'Agent 大脑 · 提示词改写', icon: Sparkles },
   { id: 'subtitle', label: '字幕与语音识别', desc: 'Whisper 模型 · 本地环境', icon: Captions },
   { id: 'agent', label: 'Agent 运行时', desc: '内置 / 外部 CLI · MCP 桥', icon: Bot },
@@ -498,6 +501,20 @@ export default function SettingsPage({ onBack, publicMode = false }) {
                     />
                   </Field>
                 </div>
+                <Field label="默认视频模型" hint="H3 走本地/云端 ComfyUI 出片；Seedance 后期外接视频生成接口。">
+                  <Select
+                    value={defaults.videoModel || 'h3'}
+                    onChange={(v) => setDefaults({ videoModel: v })}
+                    items={VIDEO_MODEL_SELECT_ITEMS}
+                  />
+                </Field>
+                <Field label="默认段缝衔接" hint="相邻镜头/多段的衔接方式；自动=按情绪节拍判断。">
+                  <Select
+                    value={defaults.seam || 'auto'}
+                    onChange={(v) => setDefaults({ seam: v })}
+                    items={SEAM_SELECT_ITEMS}
+                  />
+                </Field>
                 {(defaults.resolution || '480P') === VIDEO_RESOLUTION_CUSTOM ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="默认宽度（px）">
@@ -779,6 +796,12 @@ export default function SettingsPage({ onBack, publicMode = false }) {
                   </div>
                 ) : null}
               </div>
+            </Section>
+          ) : null}
+
+          {active === 'engines' ? (
+            <Section icon={Globe} title="线上渲染引擎" description="通用 HTTP 引擎 · 出图/出视频 · 不绑定 RunningHub">
+              <EnginesPanel cfg={cfg} setCfg={setCfg} />
             </Section>
           ) : null}
 
