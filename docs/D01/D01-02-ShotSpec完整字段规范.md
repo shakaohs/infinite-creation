@@ -1,8 +1,8 @@
-# D01-02 ShotSpec 完整字段规范（第五轮修订）
+# D01-02 ShotSpec 完整字段规范（第六轮修订）
 
 > **本文是 D01 全系列唯一的字段字典。** 其他文档只引用，不重复定义。
 > 引用方式：`D01-02 §D`（分区）、`D01-02 §F.speakers`（单字段）。
-> 修订轮次：**V5**，修订点见 `D01-11`（V4 见 `D01-10`，V3 见 `D01-09`）。V5 修正：`§10.1` 切点定义重写为 `candidateCuts` + 七条规则（P0-01，删去"`t_from` 一律拒绝"的旧表述）；`shot_assets` 列数 6→**5**、`render_adaptations` 17→**18**（P1-01）；音色顺序改为库级约束并新增 V-25/V-26（P1-03）。V4 的 `voice_ids` 派生、V3 的米制坐标保留。
+> 修订轮次：**V6**，修订点见 `D01-12`（V5 见 `D01-11`，V4 见 `D01-10`，V3 见 `D01-09`）。V6 修正：`order_no >= 1` 扩展到全部 role（P1-02，不只 voice）；`§10.1` 的切点段补"容差只用于吸附"一句，与 `D01-06 §3.3.1` 的量化口径一致（P0-01）。V5 修正：`§10.1` 切点定义重写为 `candidateCuts` + 七条规则（P0-01，删去"`t_from` 一律拒绝"的旧表述）；`shot_assets` 列数 6→**5**、`render_adaptations` 17→**18**（P1-01）；音色顺序改为库级约束并新增 V-25/V-26（P1-03）。V4 的 `voice_ids` 派生、V3 的米制坐标保留。
 
 ---
 
@@ -251,13 +251,15 @@ V3 有两个地方能表达"这一镜用哪个音色"：`shot_assets(role='voice
 
 **音色顺序（V5 · P1-03）**：顺序不是"约定"，是**数据库约束**。
 
-| 项 | 规则 |
-|---|---|
-| 起始值 | `order_no` **从 1 起**（V4 的 `DEFAULT 0` 废止） |
-| 唯一性 | `UNIQUE (shot_id, role, order_no)` —— 同镜同角色不得重号 |
-| 连续性 | 同 `(shot, role)` 内必须是 `1..n`，跳号 → `ASSET_ORDER_GAP`（FAIL，V-25） |
-| 上限 | `role='voice'` 每镜 ≤3（`CHECK` + `VOICE_OVERFLOW`） |
-| 编号映射 | `ORDER BY order_no ASC` → 第 1 条 = `Audio 1`，第 2 条 = `Audio 2`，第 3 条 = `Audio 3` |
+| 项 | 规则 | 落在哪一层 |
+|---|---|---|
+| 起始值 | `order_no` **从 1 起**，`NOT NULL` 无默认（V4 的 `DEFAULT 0` 废止） | `CHECK (order_no >= 1)` —— **V6 起覆盖全部 role**，不只 voice |
+| 唯一性 | `UNIQUE (shot_id, role, order_no)` —— 同镜同角色不得重号 | DB |
+| 连续性 | 同 `(shot, role)` 内必须是 `1..n`，跳号 → `ASSET_ORDER_GAP`（FAIL，V-25） | **只能应用层**（SQL 无行组断言） |
+| 上限 | `role='voice'` 每镜 ≤3（`VOICE_OVERFLOW`，V-26） | `CHECK (role<>'voice' OR order_no BETWEEN 1 AND 3)` |
+| 编号映射 | `ORDER BY order_no ASC` → 第 1 条 = `Audio 1`，第 2 条 = `Audio 2`，第 3 条 = `Audio 3` | 编译器（只读 `order_no`） |
+
+**V6 补充：`order_no >= 1` 适用于所有 role，不只是 voice**。V5 只写了 `CHECK (role <> 'voice' OR order_no BETWEEN 1 AND 3)`——这条对 `role='character'` 的 `order_no=0` **完全不管**。于是"角色参考图的顺序"仍可写成 0,1,2，而 `@图片N` 的编号从 1 起，编译时就得做一次 `+1` 偏移，偏移写错就整体串位。V6 加 `CHECK (order_no >= 1)`，让"0 起"在写入时就被拒。
 
 **为什么必须重号不重号这件事落到 DDL**：`(shot_id, role, asset_id)` 这个主键**拦不住**两个不同音色资产写同一个 `order_no`；一旦发生，`Audio 1` 归谁就取决于 `SELECT` 的返回顺序——同一条分镜两次编译可能出两个音色，而 `sourceSpecHash` 一模一样。**顺序必须是数据，不能是执行期的偶然。**
 
@@ -367,6 +369,10 @@ legalCuts(shot) = { t ∈ candidateCuts | ¬∃ a ∈ actions : crosses(a, t) }
 | 半开区间 | 动作占 `[t_from, t_to)`；`a.t_to <= t` → 左片段，`a.t_from >= t` → 右片段 |
 | 唯一归属 | 切点处的动作只能属于一个片段，不得两边各播一次 |
 | 局部时间 | 片段内一律 `t_local = t_abs - fragment.t_from` |
+
+**容差只有一处（V6）**：全篇唯一容差是 `TOL = 0.0005`（半个毫秒），且**只用于把请求切点吸附到边界**（`snap()`）。一旦吸附完成，跨越判定与归属判定都用严格比较（`<` / `<=` / `>=`），不再带任何容差。
+
+V5 在跨越判定上带 `±EPS`、在归属判定上不带，两者的缝隙会让"距动作终点不足一个刻度的切点"把动作判丢——`D01-06 §3.3.1` 有反例，算例 G 有六个边界测试。
 
 > `D01-01 §3.3`、`D01-06 §3.3.1` 与本表逐字同义。任何文档若出现"只能切在 `t_to`"或"`t_from` 不允许切"，均视为过期文字。
 
