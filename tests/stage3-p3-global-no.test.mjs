@@ -375,19 +375,54 @@ test('N-EXT4 目标序不是项目全集的置换 → TARGET_ORDER_INVALID（不
   assert.deepEqual(snapshot(p.id), before);
 });
 
-test('N-EXT5 listAuthoritativeShots 按 chapters.seq + id 排序（同 seq 用 id 稳定）', () => {
+test('N-EXT5 章节 seq 改变 → 把新权威序原样传入也必须重编 global_no（B 排到 A 前）', () => {
+  const { p, chapters } = newProject(1);
+  const A = chapters[0];
+  seedChapter(p.id, A.id, 1);
+  const B = Chapters.create(p.id, { title: '第2章' });
+  seedChapter(p.id, B.id, 1);
+
+  const before = rows(p.id); // ORDER BY global_no
+  const shotA = before.find((r) => r.chapter_id === A.id);
+  const shotB = before.find((r) => r.chapter_id === B.id);
+  assert.ok(shotA.global_no < shotB.global_no, '初始全局顺序必须是 A、B');
+
+  // 只改 chapters.seq，不动任何镜：权威序变成 B、A
+  db.prepare('UPDATE chapters SET seq = 2 WHERE id = ?').run(A.id);
+  db.prepare('UPDATE chapters SET seq = 1 WHERE id = ?').run(B.id);
+  const newOrder = listAuthoritativeShots(p.id).map((r) => r.id);
+  assert.deepEqual(newOrder, [shotB.id, shotA.id], '权威序应变成 B、A');
+
+  // 这正是审核指出的场景：传入的 orderedIds 与"当前权威序"逐位相同，
+  // 旧实现因此判定"没变化"→ 不重编；修复后必须与"既有 global_no 顺序"比较
+  const r = applyTargetOrder(p.id, newOrder);
+  assert.equal(r.changed, true, '章节顺序变化必须触发重编');
+  assert.ok(r.global_no_rows >= 2, 'global_no 必须重编');
+
+  const after = rows(p.id);
+  const a2 = after.find((x) => x.id === shotA.id);
+  const b2 = after.find((x) => x.id === shotB.id);
+  assert.ok(b2.global_no < a2.global_no, 'B 的 global_no 必须小于 A');
+  assert.equal(b2.global_no, 1);
+  assert.equal(a2.global_no, 2);
+  assert.equal(a2.visual_content, shotA.visual_content, '镜头内容不得变化');
+  assert.equal(b2.visual_content, shotB.visual_content);
+  assert.deepEqual(after.map((x) => x.id).sort(), [shotA.id, shotB.id].sort(), '镜头 ID 不得变化');
+  assert.equal(negativeCount(p.id), 0, '不得留下负编号');
+  assertGlobalOrder(p.id);
+
+  // 幂等：同一份新顺序再来一次是恒等操作（此时既有号序已经等于目标序）
+  assert.equal(applyTargetOrder(p.id, newOrder).changed, false);
+});
+
+test('N-EXT6 同 seq 时权威序按 chapter_id 稳定（只读断言，不依赖数据库返回顺序）', () => {
   const { p, chapters } = newProject(1);
   seedChapter(p.id, chapters[0].id, 1);
   const ch2 = Chapters.create(p.id, { title: '第2章' });
   seedChapter(p.id, ch2.id, 1);
-  // 把两章 seq 改成同值：权威序必须退化到 id ASC，且结果可复现
   db.prepare('UPDATE chapters SET seq = 1 WHERE project_id = ?').run(p.id);
   const first = listAuthoritativeShots(p.id).map((r) => r.chapter_id);
   const second = listAuthoritativeShots(p.id).map((r) => r.chapter_id);
   assert.deepEqual(first, second, '同一 seq 下顺序必须确定');
   assert.deepEqual(first, [...first].sort(), '同 seq 时按 chapter_id 升序');
-
-  // 章序（seq）变更属于"改变顺序"：必须按**新**权威序重编，否则 global_no 与真实顺序脱钩
-  applyTargetOrder(p.id, listAuthoritativeShots(p.id).map((r) => r.id));
-  assertGlobalOrder(p.id);
 });
