@@ -1,11 +1,17 @@
-// PostgreSQL 集成测试：默认跳过；设置 PG_TEST_URL 后运行。
-//   PG_TEST_URL=postgres://ic:pass@127.0.0.1:55432/ic_test pnpm test
+// PostgreSQL 集成测试：默认跳过。
+//
+// ⚠️ 阶段 3 · P0 / A-P0-3 起，**测试进程恒不连 PG**：`node --test` 的子进程会被 db.js 以
+// `TEST_REQUIRES_SQLITE` 拒绝（PG 没有可判定的库文件路径，IC_DATA_DIR 隔离对它无效）。
+// 所以本用例在 `npm test` 里恒为 skip —— 即使设了 PG_TEST_URL。恢复口径见 D02-07 §10 `U-P0-6`。
 import test from 'node:test';
 import assert from 'node:assert';
 
 const url = process.env.PG_TEST_URL;
+const skipReason = !url
+  ? '未设置 PG_TEST_URL'
+  : (process.env.NODE_TEST_CONTEXT ? 'node:test 进程禁止连 PostgreSQL（A-P0-3）' : undefined);
 
-test('PostgreSQL 驱动：建表 / 事务 / 上下文合并 / 队列去重', { skip: !url && '未设置 PG_TEST_URL' }, async () => {
+test('PostgreSQL 驱动：建表 / 事务 / 上下文合并 / 队列去重', { skip: skipReason }, async () => {
   process.env.IC_DB = 'postgres';
   process.env.DATABASE_URL = url;
   const { getDb, Projects, Assets, Chapters, Jobs, Queue, tx } = await import('../lib/core/index.js');
