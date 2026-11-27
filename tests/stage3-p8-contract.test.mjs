@@ -228,13 +228,23 @@ test('P8-C17 `global_no` 缺失 → 抛 SHOT_GLOBAL_NO_INVALID（不再静默按
     () => solveContinuity({ projectId: 'p1', sceneKey: SCENE, shots, sceneState: F.scene() }),
     (e) => e.code === 'CONTINUITY_SOLVER_FAILED' && e.reason === 'SHOT_GLOBAL_NO_INVALID',
   );
-  // 0 / 负数 / 非数字同样拒绝
-  for (const bad of [0, -1, 'abc', null]) {
+  // 0 / 负数 / null 同样拒绝（**值无效**，仍是 SHOT_GLOBAL_NO_INVALID）
+  for (const bad of [0, -1, null]) {
     const s = chain(undefined);
     s[1].global_no = bad;
     assert.throws(
       () => solveContinuity({ projectId: 'p1', sceneKey: SCENE, shots: s, sceneState: F.scene() }),
       (e) => e.reason === 'SHOT_GLOBAL_NO_INVALID', `global_no=${JSON.stringify(bad)} 未被拦`,
+    );
+  }
+  // 类型不对（字符串 / 布尔）另立一档：D02-18 R2 的契约是"求解器只要 number"，
+  // 数字字符串由组装层 normalizeGlobalNo() 规范化后才会进来。拒绝的是同一件事，理由更准。
+  for (const bad of ['abc', '3', true]) {
+    const s = chain(undefined);
+    s[1].global_no = bad;
+    assert.throws(
+      () => solveContinuity({ projectId: 'p1', sceneKey: SCENE, shots: s, sceneState: F.scene() }),
+      (e) => e.reason === 'SHOT_GLOBAL_NO_NOT_NUMBER', `global_no=${JSON.stringify(bad)} 未被拦`,
     );
   }
 });
