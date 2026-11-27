@@ -345,6 +345,57 @@ test('P4-EXT2 站位坐标三缺一 → COORD_PARTIAL（S-24 写入侧口径）'
   assert.deepEqual(codes(checkBlockingFields({ position_track: {} })), ['SCHEMA_INVALID']);
 });
 
+// ── 复审补齐：norm_xyz ∈ [0,1]³（D01-04 §四）────────────────────────────
+// 为什么必须单独测：`norm_x` 是"归一化"坐标，出界意味着写入侧换了坐标系或写错列。
+// 只判"有限数"会把 `1.5` / `-0.2` 全放行，而下游全部拿它当 0..1 用（S-15 取景半径、越轴判定）。
+test('P4-EXT3 三维归一化坐标：0 与 1 是合法边界，负数和 >1 一律 SCHEMA_INVALID', () => {
+  // 三坐标必须齐备再判（只给一个分量本来就会命中 COORD_PARTIAL，那是另一条规则）
+  const withCoord = (f, v) => ({ norm_x: 0.5, norm_y: 0.5, norm_z: 0.5, [f]: v });
+  for (const f of ['norm_x', 'norm_y', 'norm_z']) {
+    for (const edge of [0, 1]) {
+      assert.deepEqual(codes(checkBlockingFields(withCoord(f, edge))), [], `${f}=${edge} 是合法边界`);
+    }
+    for (const bad of [-0.1, -1, 1.0001, 1.5, 2]) {
+      const r = checkBlockingFields(withCoord(f, bad));
+      assert.deepEqual(codes(r), ['SCHEMA_INVALID'], `${f}=${bad} 必须被拒`);
+      assert.equal(r[0].field, `shot_blockings[0].${f}`, 'field 要能定位到具体分量');
+      assert.match(r[0].expected, /0 ~ 1/);
+      assert.equal(r[0].got, bad, 'got 要原样回显，别把出界值悄悄改成边界值');
+    }
+  }
+  // 三个分量同时出界 → 三条，各自定位（不是只报第一条就收工）
+  const multi = checkBlockingFields({ norm_x: -0.5, norm_y: 2, norm_z: 3 });
+  assert.deepEqual(codes(multi), ['SCHEMA_INVALID', 'SCHEMA_INVALID', 'SCHEMA_INVALID']);
+  assert.deepEqual(fields(multi), ['shot_blockings[0].norm_x', 'shot_blockings[0].norm_y', 'shot_blockings[0].norm_z']);
+});
+
+test('P4-EXT4 范围检查不得替 NULL 补 0：同空合法、部分空只报 COORD_PARTIAL、非有限数仍拒', () => {
+  // 三者同空：合法（三维坐标整体性规则，不是"补个默认值就过范围检查"）
+  assert.deepEqual(codes(checkBlockingFields({ norm_x: null, norm_y: null, norm_z: null })), []);
+  assert.deepEqual(codes(checkBlockingFields({})), [], '未给坐标也不算错误（S 级必填另外管）');
+  // 部分为空：只有 COORD_PARTIAL，**不得**再叠一条范围错（NULL 没被当成 0 或越界值）
+  for (const partial of [
+    { norm_x: 0.5, norm_y: 0.5, norm_z: null },
+    { norm_x: null, norm_y: 0.5, norm_z: 0.5 },
+    { norm_x: 0.5, norm_y: '', norm_z: 0.5 },
+  ]) {
+    assert.deepEqual(codes(checkBlockingFields(partial)), ['COORD_PARTIAL'], JSON.stringify(partial));
+  }
+  // 部分为空 + 有值分量越界 → 两条都要报（整体性错误与范围错误是两回事，不能互相掩盖）
+  assert.deepEqual(
+    codes(checkBlockingFields({ norm_x: 1.4, norm_y: 0.5, norm_z: null })),
+    ['SCHEMA_INVALID', 'COORD_PARTIAL'],
+  );
+  // 非有限数仍按"有限数或 NULL"拒，而不是走范围判断
+  for (const bad of [NaN, Infinity, -Infinity, '0.5']) {
+    assert.deepEqual(codes(checkBlockingFields({ norm_x: bad, norm_y: 0.5, norm_z: 0.5 })), ['SCHEMA_INVALID'], String(bad));
+  }
+  // 纯函数：入参不被改写（尤其不得把 null 变成 0）
+  const input = Object.freeze({ norm_x: 0.5, norm_y: null, norm_z: null });
+  checkBlockingFields(input);
+  assert.deepEqual(input, { norm_x: 0.5, norm_y: null, norm_z: null });
+});
+
 // ── P4-T16 纯函数：稳定、不改入参 ─────────────────────────────────────
 test('P4-T16 全部检查同输入同输出，且不修改入参（冻结对象不抛）', () => {
   const shot = Object.freeze({

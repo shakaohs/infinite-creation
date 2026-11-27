@@ -160,3 +160,58 @@ test('P4-T07k fieldNames 覆盖全部表项且有序', () => {
   assert.deepEqual(names, [...names].sort());
   assert.ok(names.includes('facing') && names.includes('occlusion'));
 });
+
+// ── 复审补齐：两个工程枚举（首轮漏项）────────────────────────────────────
+// `spec_source` 决定 posRel 第⑤级怎么推（manual→known / legacy→unknown / 其余→inferred），
+// `state_source` 决定状态行是求解产出还是人工填的。两者都是**封闭取值**，
+// 放行任意字符串会让"来源"这一层可靠性语义彻底失真。
+/** 只取 code 的便捷函数（与 schema 测试同一口径） */
+function codes(hits) {
+  return hits.map((h) => h.code);
+}
+
+test('P4-T07l spec_source / state_source 的值逐字来自 D01，且缺失按默认值放行', () => {
+  // 值域与来源（数量先钉住）
+  assert.deepEqual(ENUMS.spec_source.values, ['ai', 'import', 'manual', 'legacy'], 'D01-02 §十一');
+  assert.equal(ENUMS.spec_source.source, 'D01-02 §十一');
+  assert.deepEqual(ENUMS.state_source.values, ['solved', 'none', 'manual'], 'D01-04 §5.1');
+  assert.equal(ENUMS.state_source.source, 'D01-04 §5.1');
+
+  // 全部合法值逐一通过
+  for (const v of ['ai', 'import', 'manual', 'legacy']) assert.deepEqual(check('spec_source', v), [], v);
+  for (const v of ['solved', 'none', 'manual']) assert.deepEqual(check('state_source', v), [], v);
+  // 带空白的写法按 trim 后判（与其余字段同一口径）
+  assert.deepEqual(check('spec_source', ' manual '), []);
+
+  // 非法值：ENUM_INVALID，且 expected 要列出全部合法值（调用方据此自查）
+  for (const [field, bad, values] of [
+    ['spec_source', 'ai_gen', ['ai', 'import', 'manual', 'legacy']],
+    ['spec_source', 'solved', ['ai', 'import', 'manual', 'legacy']], // 另一个字段的值不能被串用
+    ['state_source', 'derived', ['solved', 'none', 'manual']],
+    ['state_source', 'legacy', ['solved', 'none', 'manual']],
+  ]) {
+    const r = check(field, bad);
+    assert.equal(r.length, 1, `${field}=${bad} 必须被拒`);
+    assert.equal(r[0].code, 'ENUM_INVALID');
+    assert.equal(r[0].field, field);
+    for (const v of values) assert.ok(r[0].expected.includes(v), 'expected 必须列全');
+  }
+
+  // 空值：两者在 D01-05 都有 DDL 默认值（`DEFAULT 'ai'` / `DEFAULT 'none'`），
+  // 因此缺失/空串不是错误——报"必填缺失"会把默认值场景判成数据缺陷。
+  for (const empty of ['', null, undefined]) {
+    assert.deepEqual(check('spec_source', empty), [], 'spec_source 空值按默认 ai');
+    assert.deepEqual(check('state_source', empty), [], 'state_source 空值按默认 none');
+  }
+
+  // 已纳入 fieldNames / checkObject 体系
+  const names = fieldNames();
+  assert.ok(names.includes('spec_source') && names.includes('state_source'));
+  assert.deepEqual(checkObject({ spec_source: 'manual', state_source: 'solved' }), []);
+  assert.deepEqual(
+    codes(checkObject({ spec_source: 'nope', state_source: 'nope' })),
+    ['ENUM_INVALID', 'ENUM_INVALID'],
+  );
+  // 类型错误与值错误分开（对象塞进字符串枚举）
+  assert.equal(check('spec_source', { v: 'ai' })[0].code, 'ENUM_TYPE_INVALID');
+});
