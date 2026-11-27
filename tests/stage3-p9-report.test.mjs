@@ -58,7 +58,9 @@ function seedScene({ shots = 2, purpose } = {}) {
   return { p, ids };
 }
 
-const reportRows = (shotId) => db.prepare('SELECT * FROM qc_reports WHERE target_id = ? ORDER BY created_at ASC, rowid ASC').all(shotId);
+// 测试侧的取行也用与实现同一条排序（`created_at`，同刻退化到 `id`）：不碰 `rowid`，
+// 否则"测试按物理插入序、实现按 `id DESC`"会在同一毫秒两份报告时给出两种顺序。
+const reportRows = (shotId) => db.prepare('SELECT * FROM qc_reports WHERE target_id = ? ORDER BY created_at ASC, id ASC').all(shotId);
 
 test('R1 报告落库形状：target_type=shot、规则集版本、level 四值之一、hits 一条规则一条', () => {
   const { p, ids } = seedScene({ shots: 2 });
