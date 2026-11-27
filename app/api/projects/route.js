@@ -1,6 +1,6 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Projects, Assets, Shots, Chapters, ensureChapterPoster, ensureProjectDirs, withWriteContext } from '@/lib/core/index.js';
+import { Projects, Assets, Shots, Chapters, ensureChapterPoster, ensureProjectDirs, withWriteContext, createUserProject } from '@/lib/core/index.js';
 import { splitNovelIntoChapters, PROJECT_TYPES } from '@/lib/shared/index.js';
 
 export const dynamic = 'force-dynamic';
@@ -44,10 +44,11 @@ export async function POST(req) {
       const chapters = scriptText
         ? [{ title: '第1章', novel: novelText, script: scriptText }]
         : splitNovelIntoChapters(novelText);
-      // 有剧本或多章时必须显式传章节行（Projects.create 的 chapters 分支才会写入 script）；
+      // 有剧本或多章时必须显式传章节行（低层 create 的 chapters 分支才会写入 script）；
       // 无剧本的单章保持旧路径，继续把正文放在 projects.novel。
       const chapterRows = (scriptText || chapters.length > 1) ? chapters : null;
-      const p = Projects.create({ ...(body || {}), auto_script: body.auto_script !== false, chapters: chapterRows });
+      // 用户建项目的唯一入口：默认开启结构化模式（默认值只在服务层给，这里不写死任何 flag）
+      const p = createUserProject({ ...(body || {}), auto_script: body.auto_script !== false, chapters: chapterRows });
       ensureProjectDirs(p.id);
       return NextResponse.json(p);
     } catch (e) {
@@ -55,6 +56,8 @@ export async function POST(req) {
       if (e && e.code === 'BAD_PROJECT_ENUM') return NextResponse.json({ error: e.message }, { status: 400 });
       if (e && e.code === 'BAD_PROJECT_DIM') return NextResponse.json({ error: e.message }, { status: 400 });
       if (e && e.code === 'BAD_PROJECT_TYPE') return NextResponse.json({ error: e.message }, { status: 400 });
+      // 结构化开关只接受布尔：客户端传 1/"true" 之类时给 400，不要变成 500
+      if (e && e.code === 'BAD_FLAG_VALUE') return NextResponse.json({ error: e.message }, { status: 400 });
       throw e;
     }
   });

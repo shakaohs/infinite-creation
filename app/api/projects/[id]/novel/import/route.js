@@ -1,6 +1,6 @@
 // 生成视频：把小说（大纲 + 分卷 + 角色 + 章节正文）迁移成一个 type=agent 项目，进入小说→视频流水线
 import { NextResponse } from 'next/server';
-import { Projects, Chapters, Assets, withWriteContext, loadNovelState, buildImportDocument } from '@/lib/core/index.js';
+import { Projects, Chapters, Assets, withWriteContext, loadNovelState, buildImportDocument, createUserProject } from '@/lib/core/index.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,8 @@ export async function POST(_req, { params }) {
 
   let newId;
   withWriteContext('POST /api/projects/:id/novel/import', () => {
-    const newProj = Projects.create({
+    // 导入出来的「视频版」也是用户项目：走同一个创建服务，默认继承结构化模式
+    const newProj = createUserProject({
       name: p.name ? (p.name + '（视频版）') : '未命名小说（视频版）',
       type: 'agent',
       idea: String(p.idea || ''),
