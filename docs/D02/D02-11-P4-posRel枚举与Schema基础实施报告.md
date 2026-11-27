@@ -12,6 +12,8 @@
 |---|---|
 | 实施前基线 SHA | `efc754deef26308be76c640132d773b8448472aa`（P3 含复审修复，`shakaohs/main` 一致） |
 | 实施提交 SHA | `e5f50c8`（10 文件：3 改 + 7 新增） |
+| 复审修复基线 | `5b341feb1ec34db0b1d13daf33db1caa72ebeeca`（= P4 首轮交付点） |
+| 复审修复提交 SHA | `5e381e0`（4 文件：`enums.js` +15/−1、`schema.js` +12/−0、`stage3-p4-enums.test.mjs` +55、`stage3-p4-schema.test.mjs` +51） |
 | DDL / DML | **0 条**（未建表、未改列、未写库） |
 | 真实库 | `data/ic.db` / `-wal` / `-shm` 三文件 SHA-256 与 `-shm` mtime 全程未变 |
 
@@ -23,14 +25,14 @@
 |---|---|---:|---|
 | `lib/core/continuity/pos-rel.js` | 新增 | 53 | `posRel` / `posRelDetail` **原样搬迁**（五级优先级 + 两种矛盾告警） |
 | `lib/core/hash/source-spec-hash.js` | 改 | +5 / −30 | 删掉两份实现，改为从新文件导入并原样再导出 |
-| `lib/core/validate/enums.js` | 新增 | 300 | D01 冻结枚举表（22 个扁平字段 + 2 个结构化字段）、`check` / `isValid` / `checkObject` |
-| `lib/core/validate/schema.js` | 新增 | 582 | S 级推导与必填、类型与范围、V-13、V-19、V-20、V-22 |
+| `lib/core/validate/enums.js` | 新增 | 314 | D01 冻结枚举表（**24 个扁平字段** + 2 个结构化字段）、`check` / `isValid` / `checkObject` |
+| `lib/core/validate/schema.js` | 新增 | 594 | S 级推导与必填、类型与范围（含 `norm_xyz∈[0,1]³`）、V-13、V-19、V-20、V-22 |
 | `lib/core/index.js` | 改 | +3 | `export * as enums` / `export * as schema`（命名空间导出，避免 `check`/`isValid` 这类通用名污染顶层） |
 | `tests/fixtures/pos-rel-matrix.mjs` | 新增 | 35 | 13 行判定矩阵 + 2 条告警用例（R-44 与 P4 共用） |
 | `tests/stage1-hash.test.mjs` | 改 | +10 / −17 | R-44 改为遍历共享 fixture，断言不变 |
 | `tests/stage3-p4-pos-rel.test.mjs` | 新增 | 139 | 搬迁回归（11 条） |
-| `tests/stage3-p4-enums.test.mjs` | 新增 | 162 | 枚举表（11 条） |
-| `tests/stage3-p4-schema.test.mjs` | 新增 | 392 | Schema 五项（28 条） |
+| `tests/stage3-p4-enums.test.mjs` | 新增 | 217 | 枚举表（**12 条**） |
+| `tests/stage3-p4-schema.test.mjs` | 新增 | 443 | Schema 五项 + 坐标范围（**30 条**） |
 
 未改：P0/P1/P2/P3 的任何实现、`lib/core/schema/tables.js`（DDL 冻结）、其他 D02 文档。
 
@@ -74,7 +76,7 @@
 
 ## 四、枚举来源与字段覆盖清单
 
-### 4.1 覆盖的字段（22 个扁平 + 2 个结构化）
+### 4.1 覆盖的字段（24 个扁平 + 2 个结构化）
 
 | 字段 | 值数 | 来源 | 备注 |
 |---|---:|---|---|
@@ -101,6 +103,8 @@
 | `prop.state` | 6 | D01-04 §十 | `absent` 是"键不存在"，不是值 |
 | `state.rel` | 4 | D01-04 §5.2 | `known`/`inferred`/`unknown`/`not_applicable` |
 | `asset.role` | 6 | D01-05 §4.6 | 与 P3 的 `SHOT_ASSET_ROLES` 同源 |
+| `spec_source` | 4 | D01-02 §十一 | `ai`/`import`/`manual`/`legacy`；DDL `DEFAULT 'ai'`，故空值放行（复审补齐） |
+| `state_source` | 3 | D01-04 §5.1 | `solved`/`none`/`manual`；DDL `DEFAULT 'none'`，故空值放行（复审补齐） |
 | `facing`（结构化） | 4 方位 + 角度 | D01-04 §四 | 接受 `N` / `N+30` / `N-45` / `{dir,deg}`，deg 限 ±180 |
 | `occlusion`（结构化） | 3 + `partial(部位)` | D01-04 §四 | 裸 `partial` 不合法（必须说清部位） |
 
@@ -127,7 +131,7 @@ D01-02 §4.4 标题写「`movement` 运镜（21 值）」，但该表**逐项点
 |---|---|---|
 | V-01 S 级推导 | `computeLevel` | 四条判据逐级提升（取最大），**忽略调用方传入的 `level`** 并回 `declared_ignored` |
 | V-01 各级必填 | `checkRequired` | S0 → `BLOCKING_FIELD_MISSING`；S1~S4 → `SCHEMA_INVALID`；`axis_lock`/`crowd_switch`/`state_in out`/逐动作 `contact` 单独判 |
-| 类型与范围 | `checkShotFields` / `checkBlockingFields` | 只做 D01 明写的范围；坐标三缺一 → `COORD_PARTIAL`（S-24 写入侧口径） |
+| 类型与范围 | `checkShotFields` / `checkBlockingFields` | 只做 D01 明写的范围（含 **`norm_x/norm_y/norm_z ∈ [0,1]³`**）；坐标三缺一 → `COORD_PARTIAL`（S-24 写入侧口径），**不把 NULL 补 0** |
 | V-13 空镜台词 | `checkEmptyShot` | `is_insert=1` 时：`on_screen` 且 `in_frame=1` → FAIL；`off_screen` 但 `in_frame=1` → FAIL；纯空镜合法 |
 | V-19 Meta 键 | `checkMetaKeys` | 四类路径逐段解析 + 实体存在性 + 字段白名单；`__solver` 单独放行，其他 `__` 键拒 |
 | V-19 辅助 | `countReliabilityEntries` | 统计字段可靠性条目数（排除 `__solver`），供 P5/P6 复算 |
@@ -176,7 +180,7 @@ chars_in_frame >= 3 || 有 prop 被 ≥2 人接触        → ≥S2
 | P4-T04 | BL-05 缺失三维坐标必定 `unknown` | PASS（含 `spec_source=manual` + `meta.rel=known` 两种翻案尝试） |
 | P4-T05 | `posRel` 只有一份实现 | PASS（函数引用相等 + 全仓 grep 只一处定义） |
 | P4-T06 | Hash 原有导出与 `sourceSpecHash` 结果不变 | PASS（导出同一函数；payload 白名单字段逐字不变；同输入同 hash） |
-| P4-T07 | D01 枚举表完整、合法值通过、非法值拒绝 | PASS（表数量逐项钉住；22 个字段逐值遍历） |
+| P4-T07 | D01 枚举表完整、合法值通过、非法值拒绝 | PASS（表数量逐项钉住；**24 个扁平字段**逐值遍历；`spec_source`/`state_source` 见 P4-T07l） |
 | P4-T08 | S0~S4 按本镜数据正确推导 | PASS |
 | P4-T09 | 五个 S 级对应必填集正确 | PASS |
 | P4-T10 | 调用方伪造 S 级不能覆盖程序计算 | PASS |
@@ -189,7 +193,10 @@ chars_in_frame >= 3 || 有 prop 被 ≥2 人接触        → ≥S2
 | P4-T17 | 未改冻结 DDL、历史数据、P0~P3 实现 | PASS（`git status` 只有本轮 10 个文件） |
 | P4-T18 | 全量新增失败数 = 0 | PASS（17 条与基线逐条同名同因） |
 
-单个文件计数：`stage3-p4-pos-rel` **11/11**、`stage3-p4-enums` **11/11**、`stage3-p4-schema` **28/28**。
+| P4-EXT3 | `norm_x/norm_y/norm_z ∈ [0,1]³`：0 与 1 通过，负数与 >1 拒绝 | PASS（三个分量 × 边界 2 × 非法 5，逐项断言 `field`/`got`） |
+| P4-EXT4 | 范围检查不得替 NULL 补 0 | PASS（同空通过 / 部分空只报 `COORD_PARTIAL` / 非有限数仍拒 / 入参不被改写） |
+
+单个文件计数：`stage3-p4-pos-rel` **11/11**、`stage3-p4-enums` **12/12**、`stage3-p4-schema` **30/30**（合计 53）。
 
 ---
 
@@ -198,10 +205,11 @@ chars_in_frame >= 3 || 有 prop 被 ≥2 人接触        → ≥S2
 | 组 | tests | pass | fail | skip |
 |---|---:|---:|---:|---:|
 | 实施前（P3 + 复审修复） | 515 | 487 | 17 | 11 |
-| 实施后 | **565** | **537** | 17 | 11 |
-| 差值 | **+50** | **+50** | **0** | **0** |
+| 实施后（首轮） | 565 | 537 | 17 | 11 |
+| **复审修复后** | **568** | **540** | 17 | 11 |
+| 差值（相对 P3） | **+53** | **+53** | **0** | **0** |
 
-- 新增 50 条 = pos-rel 11 + enums 11 + schema 28，全部通过。
+- 新增 53 条 = pos-rel 11 + enums 12 + schema 30（含复审补的 P4-T07l / P4-EXT3 / P4-EXT4），全部通过。
 - 17 条失败与基线 `diff` **为空**：仍是 legacy `shots` / 旧 `set_storyboard` / 换装兜底 / `freeComfy` 那批，**同名同因，不是本轮引入**。
 
 ---
@@ -267,3 +275,58 @@ chars_in_frame >= 3 || 有 prop 被 ≥2 人接触        → ≥S2
 | U-P4-5 | `occlusion` 的部位写法同样有三种（`partial:arm` / `partial(arm)` / `{type,part}`） | 同上，单点可改 |
 | U-P4-6 | D01-02 §4.4 标题「21 值」与逐项 22 值不一致 | 本轮按逐项 22 实现（删值会让合法运镜被拒），D01 已冻结未改；是否需要回改文档交审核决定 |
 | U-P4-7 | `checkSchema` 的 `hits` 排序按 `(field, code, level)` 字典序 | 便于确定性断言；若 P5 需要"按规则严重度排序"，在 P5 聚合层再排 |
+
+---
+
+## 十三、复审补记：两个枚举字段 + 三维归一化坐标范围
+
+复审指出 P4 首轮漏了两处，均已确认属实，本轮只补这两处（未动 `posRel`、未动 P0~P3、未进 P5）。
+
+### 13.1 缺口一：枚举表漏了 `spec_source` / `state_source`
+
+| 项 | 内容 |
+|---|---|
+| 漏项 | `ENUMS` 里没有 `spec_source`（D01-02 §十一）与 `state_source`（D01-04 §5.1） |
+| 后果 | 这两个字段的取值是**封闭集合**，且 `spec_source` 直接决定 `posRel` 第⑤级推导（`manual → known` / `legacy → unknown` / 其余 `inferred`）。放行任意字符串等于让"来源"这层可靠性语义失效 |
+| 修复 | `enums.js` +15/−1：两份枚举进 `ENUMS`，自动进入 `fieldNames()` / `checkObject()` 体系，走同一个 `check()` |
+| 空值口径 | 两者在 D01-05 都有 DDL 默认值（`spec_source TEXT DEFAULT 'ai'`、`state_source TEXT DEFAULT 'none'`）→ `allowEmpty: true`。报"必填缺失"会把默认值场景误判成数据缺陷 |
+| 未动 | 其余 22 个枚举字段、`STRUCTURED` 两项、`check()` 的返回结构一字未改 |
+
+### 13.2 缺口二：`norm_xyz` 没查范围
+
+| 项 | 内容 |
+|---|---|
+| 漏项 | `checkBlockingFields` 对 `norm_x/norm_y/norm_z` 只判"有限数"，没判 D01-04 §四 明写的 `∈ [0,1]³` |
+| 后果 | `1.5` / `-0.2` 被放行。下游（S-15 取景半径、越轴判定、渲染归一化）都把它当 0..1 用，出界值到那里才炸，且现场看不出是写入侧换了坐标系 |
+| 修复 | `schema.js` +12/−0：新增一个只判"非空且有限"分量的范围循环，`0` 与 `1` 是合法边界，`<0` / `>1` → `SCHEMA_INVALID`（`field` 定位到 `shot_blockings[i].norm_x`，`got` 原样回显） |
+| NULL 处理 | **不补 0**：三者同空合法、部分为空仍只报 `COORD_PARTIAL`（S-24 整体性规则）。范围循环只判"已经给了值"的分量，所以"部分空 + 有值分量越界"会同时报两条——整体性错误与范围错误不能互相掩盖 |
+| 未动 | `posRel` 五级优先级、`distance_to_camera`（D01 未给上界，只判有限数）、`COORD_PARTIAL` 的判定与 code |
+
+### 13.3 新增测试与 A/B 实证
+
+| 编号 | 覆盖 |
+|---|---|
+| **P4-T07l** | 两字段值域逐字等于 D01（含 `source` 字段）；全部合法值通过；非法值（含"串用另一字段的值"：`spec_source='solved'`、`state_source='legacy'`）报 `ENUM_INVALID` 且 `expected` 列全；空值三种放行；进 `fieldNames`/`checkObject`；对象塞进字符串枚举报 `ENUM_TYPE_INVALID` |
+| **P4-EXT3** | 三个分量 × `{0, 1}` 边界通过；× `{-0.1, -1, 1.0001, 1.5, 2}` 全部拒绝，逐项断言 `field`/`got`；三分量同时出界报三条（不是报第一条就收工） |
+| **P4-EXT4** | 三者同空通过、未给坐标通过；三种"部分为空"只报 `COORD_PARTIAL`；部分为空 + 越界 → `SCHEMA_INVALID` + `COORD_PARTIAL`；非有限数（`NaN`/`±Infinity`/`'0.5'`）仍按类型拒；冻结入参不被改写（尤其 `null` 不得变 `0`） |
+
+**A/B**（同一份测试，只换 `enums.js` / `schema.js`）：
+
+| 版本 | 结果 |
+|---|---|
+| 首轮实现（`5b341fe`） | `P4-T07l` / `P4-EXT3` / `P4-EXT4` **3 条全红**（`ENUM_FIELD_UNKNOWN`、越界值被放行） |
+| 本轮修复后 | **53 / 53 pass**（pos-rel 11 + enums 12 + schema 30） |
+
+### 13.4 全量对照（修复后重跑，提交 `5e381e0`）
+
+| 组 | tests | pass | fail | skip |
+|---|---:|---:|---:|---:|
+| P3 基线 | 515 | 487 | 17 | 11 |
+| P4 首轮 | 565 | 537 | 17 | 11 |
+| **P4 复审修复后** | **568** | **540** | 17 | 11 |
+
+17 条失败与基线 `diff` **为空**（同名同因，未新增）。真库三文件 SHA-256 与修复前基线逐字相同（`b2ebdb54…` / `2711665d…` / `22d61103…`），`-shm` mtime `1795744805 → 1795744805`；**0 条 DDL、0 条 DML**。
+
+### 13.5 本次修复带出的记录项
+
+`U-P4-8`（C 级）：`norm_z` 的 `[0,1]` 是否该按"离地高度"单独放宽，D01-04 §四 目前只写 `norm_xyz ∈ [0,1]³`，本轮按原文一刀切。若后续把 `norm_z` 改成"米制高度"或允许 `-1..1`（地面以下），改 `checkBlockingFields` 里那一个循环即可，不涉及其他函数。
