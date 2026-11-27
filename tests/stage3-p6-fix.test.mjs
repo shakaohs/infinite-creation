@@ -88,8 +88,14 @@ test('R1-6 Hash 与求解器共用同一份归一化（不得各写一套）', (
   assert.deepEqual(Object.keys(norm), ['chars.c1.pos', 'chars.c2.posture']);
   assert.deepEqual(norm['chars.c1.pos'], { rel: 'unknown', src: 'carried:sh_1', conf: 0.855 });
   assert.deepEqual(norm['chars.c2.posture'], { rel: 'known', src: null, conf: null });
-  // 非对象入参一律空（不抛，避免把"没有 meta"变成缺陷）
-  for (const bad of [null, undefined, 'x', 0, []]) assert.deepEqual(normalizeShotMeta(bad), {});
+  // 合法空值 → 空（"没有标注"是正常状态，不是缺陷）
+  for (const empty of [null, undefined, '', '   ', '{}']) assert.deepEqual(normalizeShotMeta(empty), {});
+  // 非法值必须抛（P6 最终验收补强）：静默降级成 `{}` 会把"数据坏了"伪装成"没有标注"，
+  // 而这两种情况在 Hash 上长得一模一样 —— 正是 R1 要堵的那类缺口。
+  for (const bad of ['x', 0, [], '[]', '[1]']) {
+    assert.throws(() => normalizeShotMeta(bad),
+      (e) => e.code === 'SOLVE_META_INVALID_JSON' || e.code === 'SOLVE_META_NOT_OBJECT', JSON.stringify(bad));
+  }
 });
 
 test('R1-7 元数据顺序不影响 Hash（不依赖对象键序）', () => {
@@ -272,9 +278,15 @@ test('R4-3 传 story_shots 行（创作行）→ 抛 QC_DEPS_NEXT_SHOT_NOT_STATE
   }
 });
 
-test('R4-4 状态行的合法形状：含 state_in / state_out / conflicts 任一即接受', () => {
-  for (const ns of [{ state_in: {} }, { state_in: null }, { state_out: {} }, { conflicts: [] }, { id: 'sh_02', state_in: {}, state_out: {} }]) {
+test('R4-4 状态行的合法形状：**必须自带 state_in**（只给 state_out / conflicts 一律拒绝）', () => {
+  // 合法：带 `state_in`（值可以是 null —— 状态未知，与"末镜无下镜"不是一回事）
+  for (const ns of [{ state_in: {} }, { state_in: null }, { id: 'sh_02', state_in: {}, state_out: {}, conflicts: [] }]) {
     assert.match(ruleHash('A-06', depsCtx({ nextShot: ns })), /^sha256:[0-9a-f]{64}$/, JSON.stringify(ns));
+  }
+  // 非法：A-06 只读 `state_in`，其余列齐备也补不上"读不到东西"这个事实
+  for (const ns of [{ state_out: {} }, { conflicts: [] }, { state_out: {}, conflicts: [] }]) {
+    assert.throws(() => depsCtx({ nextShot: ns }),
+      (e) => e.code === 'QC_DEPS_NEXT_SHOT_NOT_STATE', JSON.stringify(ns));
   }
 });
 
