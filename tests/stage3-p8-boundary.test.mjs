@@ -323,3 +323,126 @@ test('R4-3 `unknown` 只影响所指字段，不牵连同镜其它字段', () =>
   // posture 未被标注 → 仍按 spec_source 得 inferred / 继承 known，不受 pos 牵连
   assert.notEqual(r.states.b.meta['chars.c1.posture'].rel, 'unknown');
 });
+
+// ══ D02-19 R1：rows 不得作为标注通道（旁路封堵）════════════════════════════
+//
+// 修复前的旁路：`assembleSolverShots` 用 `{...row}` 复制，`row.meta` 跟着进来；
+// 该镜没有 `annotations` 时无人覆盖它 → 调用方塞的 meta **绕过 buildShotAnnotations()**
+// 直接进求解器。拒绝策略取"带 meta 就整批拒"，不取"空对象放行"：
+// 按内容放行会让规则变成"看里面有什么"，而"空对象"与"投影结果为空"无法区分。
+
+test('D19-R1-1 rows 带完整求解结果 meta → 拒绝（不得绕过 buildShotAnnotations）', () => {
+  const bad = rows();
+  bad[1].meta = { 'chars.c1.pos': { rel: 'inferred', src: 'carried:a', conf: 0.855, ver: 3 } };
+  assert.throws(
+    () => assembleSolverShots({ projectId: 'p1', sceneKey: SCENE, rows: bad }),
+    (e) => e.code === 'CONTINUITY_SOLVER_FAILED' && e.reason === 'ROWS_META_NOT_ALLOWED' && e.shot_id === 'b',
+  );
+});
+
+test('D19-R1-2 rows 只带裸 rel 标注 → 仍拒绝（形状合法的裸标注也是错通道）', () => {
+  const bad = rows();
+  bad[1].meta = { 'chars.c1.pos': { rel: 'known' } };
+  // 这份 meta 的形状与"人工裸标注"完全相同 —— 但它没经过 source 声明，
+  // 所以组装层不可能知道它来自人工还是 shot_states（这正是 D02-18 R1 的洞）
+  assert.throws(
+    () => assembleSolverShots({ projectId: 'p1', sceneKey: SCENE, rows: bad }),
+    (e) => e.reason === 'ROWS_META_NOT_ALLOWED',
+  );
+});
+
+test('D19-R1-3 rows 带空 meta 对象 / null → 按同一契约拒绝（不存在"看起来没事"的旁路）', () => {
+  for (const empty of [{}, null]) {
+    const bad = rows();
+    bad[0].meta = empty;
+    assert.throws(
+      () => assembleSolverShots({ projectId: 'p1', sceneKey: SCENE, rows: bad }),
+      (e) => e.reason === 'ROWS_META_NOT_ALLOWED',
+      `meta=${JSON.stringify(empty)} 应被拒`,
+    );
+  }
+  // `undefined` 视为"没有这个字段"（JSON 往返也不会产出它），不算通道
+  const ok = rows();
+  ok[0].meta = undefined;
+  assert.doesNotThrow(() => assembleSolverShots({ projectId: 'p1', sceneKey: SCENE, rows: ok }));
+});
+
+test('D19-R1-4 带了合法 annotations 也不能豁免 rows 的 meta（不得"有标注就放过"）', () => {
+  const bad = rows();
+  bad[1].meta = { 'chars.c1.pos': { rel: 'known' } };
+  assert.throws(
+    () => assembleSolverShots({
+      projectId: 'p1', sceneKey: SCENE, rows: bad,
+      annotations: { b: { source: 'manual', entries: { 'chars.c1.pos': { rel: 'unknown' } } } },
+    }),
+    (e) => e.reason === 'ROWS_META_NOT_ALLOWED',
+  );
+});
+
+test('D19-R1-5 rows 不带 meta + annotations 合法 → 正常组装，且 meta 全由组装层生成', () => {
+  const { shots } = assembleSolverShots({
+    projectId: 'p1', sceneKey: SCENE, rows: rows(),
+    annotations: { b: { source: 'manual', entries: { 'chars.c1.pos': { rel: 'unknown' } } } },
+  });
+  // 精确相等：没有多出来的键，也没有来自 rows 的任何内容
+  assert.deepEqual(shots[1].meta, { 'chars.c1.pos': { rel: 'unknown', src: 'manual:manual' } });
+  assert.equal(shots[0].meta, undefined, '无标注的镜不得凭空生成 meta');
+  assert.equal(shots[2].meta, undefined);
+  // 每条都必须是 manual: 前缀，不可能出现结果侧来源
+  for (const v of Object.values(shots[1].meta)) assert.match(v.src, /^manual:/);
+});
+
+test('D19-R1-6 组装不修改入参：拒绝时不改写 rows，成功时原数组仍无 meta', () => {
+  const bad = rows();
+  bad[1].meta = { 'chars.c1.pos': { rel: 'known' } };
+  const snapshot = JSON.stringify(bad);
+  assert.throws(() => assembleSolverShots({ projectId: 'p1', sceneKey: SCENE, rows: bad }));
+  assert.equal(JSON.stringify(bad), snapshot, '拒绝路径改写了入参');
+
+  const good = rows();
+  assembleSolverShots({
+    projectId: 'p1', sceneKey: SCENE, rows: good,
+    annotations: { b: { source: 'manual', entries: { 'chars.c1.pos': { rel: 'unknown' } } } },
+  });
+  assert.equal(good[1].meta, undefined, '成功路径污染了入参');
+});
+
+// ══ D02-19 R2：镜头 id 唯一性 ══════════════════════════════════════════════
+
+test('D19-R2-1 重复 shot.id → 整批拒绝（不得靠 Map 覆盖）', () => {
+  const bad = rows();
+  bad[2].id = 'b'; // b 出现两次
+  assert.throws(
+    () => assembleSolverShots({ projectId: 'p1', sceneKey: SCENE, rows: bad }),
+    (e) => e.code === 'CONTINUITY_SOLVER_FAILED'
+      && e.reason === 'SHOT_ID_DUPLICATED' && e.shot_ids.includes('b'),
+  );
+});
+
+test('D19-R2-2 直调求解器同样拒绝重复 id（同一份判据，不在两处各写一套）', () => {
+  const bad = rows();
+  bad[2].id = 'b';
+  assert.throws(
+    () => run(bad),
+    (e) => e.reason === 'SHOT_ID_DUPLICATED',
+  );
+  // 三个不同 id 不受影响（反向）
+  assert.equal(Object.keys(run(rows()).states).length, 3);
+});
+
+test('D19-R2-3 标注按 id 唯一对应：重复 id 被拦后不会出现"标注张冠李戴"', () => {
+  const bad = rows();
+  bad[2].id = 'b';
+  const { shots } = (() => {
+    try {
+      return assembleSolverShots({
+        projectId: 'p1', sceneKey: SCENE, rows: bad,
+        annotations: { b: { source: 'manual', entries: { 'chars.c1.pos': { rel: 'unknown' } } } },
+      });
+    } catch (e) {
+      assert.equal(e.reason, 'SHOT_ID_DUPLICATED');
+      return { shots: null };
+    }
+  })();
+  assert.equal(shots, null, '重复 id 时不应产出任何可用输入');
+});
