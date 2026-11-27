@@ -28,9 +28,9 @@ test('CK-2 规则级双向 diff：69 条逐条为空（missing=[] 且 extra=[]�
   assert.equal(RES.total.passed, 69);
 });
 
-test('CK-2 覆盖规模：映射字段 328、实际读取 661（逐规则均 > 0）', () => {
-  assert.equal(RES.total.declaredSum, 328);
-  assert.equal(RES.total.actualSum, 661);
+test('CK-2 覆盖规模：映射字段 327、实际读取 660（逐规则均 > 0）', () => {
+  assert.equal(RES.total.declaredSum, 327);
+  assert.equal(RES.total.actualSum, 660);
   for (const r of RES.rows) {
     // V-12 属阶段 4，恒不应适用 —— 按 §9.2.1 C.2 第 8 条，**不得伪造可执行依赖**，故 0 字段是对的
     if (r.rule_id !== 'V-12') assert.ok(r.declared > 0, `${r.rule_id} 映射字段为 0（等于没定义依赖）`);
@@ -108,10 +108,9 @@ test('CK-1 字段级并集：所有实际读取路径的根都在已知容器内
     'chapterShots', 'nextShotState', 'targetProfile', '__audit',
     // P5 补充的契约键（上一条镜/决定项），已在 §7.8.1.2 之外单列（D02-12 U-P5-4）
     'prevShot', 'prevShotAssets', 'prevActions', 'costumeChangeAllowed']);
-  // 已知偏差（P5 只读，不在本轮修）：S-15 读 `shot.distance_to_camera`，但该列在 `shot_blockings`，
-  // `story_shots` 没有它 —— 该分支恒为 undefined，实际只靠 `blockings[*].distance_to_camera` 生效。
-  // 记为 U-P6-4，进报告；此处显式放行，不得悄悄扩大允许集。
-  const KNOWN = new Set(['shot.distance_to_camera']);
+  // U-P6-4 已修：S-15 的 `shot.distance_to_camera` 是历史遗留读取（`story_shots` 无此列），
+  // 规则与映射均已移除，因此这里**不再放行任何偏差** —— 允许集若重新变非空，即回归。
+  const KNOWN = new Set();
   const shotCols = new Set(Object.values(SHOT_COLUMNS).flat());
   const sceneCols = new Set([...Object.values(SCENE_COLUMNS).flat(), 'scene_key']);
   const assetCols = new Set([...Object.values(ASSET_COLUMNS).flat()]);

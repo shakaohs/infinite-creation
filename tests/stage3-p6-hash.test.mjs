@@ -255,11 +255,14 @@ test('SIG-3 / QH-16 纯函数与必传参数：undefined 与 [] 必须可区分'
 });
 
 test('QH-3 邻镜：末镜用 __last__ 哨兵，与非末镜算出不同值', () => {
-  const withNext = depsCtx({ nextShot: { id: 'sh_02' } });
+  // `nextShot` 是**状态行**（P6-R4 起做形状校验；不带 state_in 的创作行会被拒）
+  const withNext = depsCtx({ nextShot: { id: 'sh_02', state_in: { chars: { c1: { pos: [0.7, 0.5, 0] } } } } });
   const last = depsCtx({ nextShot: null });
   assert.notEqual(ruleHash('A-06', withNext), ruleHash('A-06', last));
   // A-06 的输入里必须有哨兵这一段（否则两种情况同值）
   assert.equal(last.nextShot, null);
+  // `nextShot` 与 `nextShotState` 指向同一行，P5 的 A-06 读的是后者
+  assert.equal(withNext.nextShot, withNext.nextShotState);
 });
 
 test('QH-2 章级三条：改一镜 shot_size，全章 V-06/V-07/V-08 的 Hash 都变', () => {
