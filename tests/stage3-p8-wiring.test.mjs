@@ -77,7 +77,7 @@ function seedScene({ shots = 3, globalNos = null, sceneKey = SCENE, withBaseline
 const countOf = (table, where = '', ...args) => db.prepare(`SELECT COUNT(*) AS c FROM ${table}${where}`).get(...args).c;
 
 // ══ R1：JSON 列形状契约（D02-20-R1）═══════════════════════════════════════
-// 编号接在接线用例之后（W14~W21），物理位置放在最前：先钉"读进来的原料长什么样"，
+// 编号接在接线用例之后（W14~W22），物理位置放在最前：先钉"读进来的原料长什么样"，
 // 再看"这些原料怎么接到求解器"——契约在前、接线在后，读文件时不容易把两者混为一谈。
 // 这些用例专测"语法合法、形状错"——`JSON.parse` 成功不等于数据可用：
 // `[]` 冒充对象、`{}` 冒充数组，下游只会静默走空分支，算出"看起来正常"的空结论。
@@ -160,19 +160,17 @@ test('W17 对象列写成数字 / 布尔值 → 拒绝（语法都合法）', ()
   }
 });
 
-test('W18 对象列的 null 按既定缺省语义处理（SQL NULL / JSON null / 空串都补 {}）', () => {
+test('W18 对象列的原始 null / undefined / 空串维持缺省语义（不因本轮校验而改变）', () => {
   const { p, ids } = seedScene({ shots: 1 });
-  const cases = {
-    [seedAction(ids[0], { init_state: null })]: 'SQL NULL',
-    [seedAction(ids[0], { init_state: 'null' })]: 'JSON null',
-    [seedAction(ids[0], { init_state: '' })]: '空串',
-  };
+  const nullId = seedAction(ids[0], { init_state: null });
+  const emptyId = seedAction(ids[0], { init_state: '' });
   const row = loadSceneInput({ projectId: p.id, sceneKey: SCENE }).rows[0];
-  assert.equal(row.actions.length, 3);
   const byId = Object.fromEntries(row.actions.map((a) => [a.id, a]));
-  for (const [id, label] of Object.entries(cases)) {
-    assert.deepEqual(byId[id].init_state, {}, `${label} 应走缺省语义（{}），不应报形状错误`);
-  }
+  assert.deepEqual(byId[nullId].init_state, {}, 'SQL NULL 应走缺省（{}）');
+  assert.deepEqual(byId[emptyId].init_state, {}, '空串应走缺省（{}）');
+  // `undefined` 库侧到不了（驱动只给字符串或 NULL），直接喂入口证明同一分支
+  const m = { table: 'shot_actions', column: 'init_state', key: 'act_x', shot: 'sh_x', kind: 'object' };
+  assert.equal(parseJsonColumn(undefined, m), null, 'undefined 应走缺省，不是形状错误');
 });
 
 test('W19 数组列写成对象 → 拒绝（story_shots.time_slices 与 shot_actions.body_parts）', () => {
@@ -215,6 +213,19 @@ test('W21 错误信息可定位：表名 + 列名 + 记录 id + 所属镜头 + �
   }
   // 语法是合法的：不得误报成"不是合法 JSON"（两类失败必须分得开）
   assert.equal(err.message.includes('不是合法 JSON'), false, err.message);
+});
+
+test('W22 对象列写出 JSON 文本 null → 拒绝（`typeof null === "object"` 的漏网）', () => {
+  const { p, ids } = seedScene({ shots: 1 });
+  const actId = seedAction(ids[0], { init_state: 'null' });
+  assert.throws(
+    () => loadSceneInput({ projectId: p.id, sceneKey: SCENE }),
+    (e) => e.reason === 'SCENE_INPUT_INVALID_SHAPE'
+      && e.column === 'init_state' && e.key === actId && e.actual === 'null'
+      && e.message.includes('null'),
+  );
+  // 对照：原始值 null 仍走缺省（W18），两者不可混为一谈
+  assert.equal(parseJsonColumn(null, { table: 'shot_actions', column: 'init_state', key: 'x', kind: 'object' }), null);
 });
 
 // ══ R1/R2：真实调用链接通 ═════════════════════════════════════════════════
