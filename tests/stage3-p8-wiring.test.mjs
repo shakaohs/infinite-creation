@@ -8,6 +8,7 @@
 //   ① "接了"不等于"接的是真实数据"—— 断言 rows 真来自 DB（shotCount 与库里行数一致）
 //   ② "历史状态没回搬"—— 往 `shot_states` 塞一条带 carried: 的 meta，断言求解结果**逐位不变**
 //   ③ "生产调用只此一条路"—— 静态扫描 lib/ 与 app/，除定义与 wrapper 外不得出现 solveContinuity(
+//   ④ "解析成功"不等于"形状对"—— 对象列写 `[]`、数组列写 `{}` 都必须当场拒（D02-20-R1）
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -26,7 +27,7 @@ const { createUserProject } = await import('../lib/core/project-create.js');
 const { upsertSceneStates } = await import('../lib/core/scene-state.js');
 const { insertStoryShot } = await import('../lib/core/render/global-no.js');
 const { solveSceneContinuity, solveLoaded } = await import('../lib/core/continuity/solve-scene.js');
-const { loadSceneInput } = await import('../lib/core/continuity/load-scene.js');
+const { loadSceneInput, parseJsonColumn } = await import('../lib/core/continuity/load-scene.js');
 const { assembleSolverShots } = await import('../lib/core/continuity/assemble-input.js');
 const { solveContinuity } = await import('../lib/core/continuity/solve-continuity.js');
 
@@ -74,6 +75,147 @@ function seedScene({ shots = 3, globalNos = null, sceneKey = SCENE, withBaseline
 }
 
 const countOf = (table, where = '', ...args) => db.prepare(`SELECT COUNT(*) AS c FROM ${table}${where}`).get(...args).c;
+
+// ══ R1：JSON 列形状契约（D02-20-R1）═══════════════════════════════════════
+// 编号接在接线用例之后（W14~W21），物理位置放在最前：先钉"读进来的原料长什么样"，
+// 再看"这些原料怎么接到求解器"——契约在前、接线在后，读文件时不容易把两者混为一谈。
+// 这些用例专测"语法合法、形状错"——`JSON.parse` 成功不等于数据可用：
+// `[]` 冒充对象、`{}` 冒充数组，下游只会静默走空分支，算出"看起来正常"的空结论。
+
+let actSeq = 0;
+/** 直接写一行 `shot_actions`（只给要测的列，其余吃 DDL 默认值） */
+function seedAction(shotId, cols = {}) {
+  actSeq += 1;
+  const id = `act_r1_${actSeq}`;
+  const all = { id, shot_id: shotId, ...cols };
+  const keys = Object.keys(all);
+  db.prepare(`INSERT INTO shot_actions (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`)
+    .run(...keys.map((k) => all[k]));
+  return id;
+}
+
+test('W14 对象型 JSON 合法时逐列解析（九个对象列 + body_parts 数组）', () => {
+  const { p, ids } = seedScene({ shots: 1 });
+  const objCols = {
+    init_state: { posture: 'standing' },
+    trigger_json: { kind: 'grab' },
+    path_json: { points: [[0, 0, 0]] },
+    force_json: { n: 3 },
+    speed_json: { v: 1.2 },
+    contact_json: { part: 'wrist' },
+    result_json: { ok: true },
+    end_state: { posture: 'sitting' },
+    sync_json: { with: 'c2' },
+  };
+  const strings = Object.fromEntries(Object.entries(objCols).map(([k, v]) => [k, JSON.stringify(v)]));
+  const actId = seedAction(ids[0], { ...strings, body_parts: '["hand","wrist"]' });
+
+  const row = loadSceneInput({ projectId: p.id, sceneKey: SCENE }).rows[0];
+  assert.equal(row.actions.length, 1);
+  const a = row.actions[0];
+  assert.equal(a.id, actId);
+  for (const [k, v] of Object.entries(objCols)) assert.deepEqual(a[k], v, `${k} 没有被解析成对象`);
+  assert.deepEqual(a.body_parts, ['hand', 'wrist']);
+  // 别名与源列是同一份引用（求解器读 `result` / `contact`）
+  assert.equal(a.result, a.result_json);
+  assert.equal(a.contact, a.contact_json);
+});
+
+test('W15 对象列写成 `[]` → SCENE_INPUT_INVALID_SHAPE（不是"空对象"）', () => {
+  const { p, ids } = seedScene({ shots: 1 });
+  const actId = seedAction(ids[0], { init_state: '[]' });
+  assert.throws(
+    () => loadSceneInput({ projectId: p.id, sceneKey: SCENE }),
+    (e) => {
+      assert.equal(e.code, 'CONTINUITY_SOLVER_FAILED');
+      assert.equal(e.reason, 'SCENE_INPUT_INVALID_SHAPE');
+      assert.equal(e.table, 'shot_actions');
+      assert.equal(e.column, 'init_state');
+      assert.equal(e.key, actId);
+      assert.equal(e.shot, ids[0]);
+      assert.equal(e.actual, 'array');
+      return true;
+    },
+  );
+});
+
+test('W16 对象列写成 JSON 字符串 → 拒绝（形状 string）', () => {
+  const { p, ids } = seedScene({ shots: 1 });
+  seedAction(ids[0], { trigger_json: '"grab"' });
+  assert.throws(
+    () => loadSceneInput({ projectId: p.id, sceneKey: SCENE }),
+    (e) => e.reason === 'SCENE_INPUT_INVALID_SHAPE' && e.column === 'trigger_json' && e.actual === 'string',
+  );
+});
+
+test('W17 对象列写成数字 / 布尔值 → 拒绝（语法都合法）', () => {
+  for (const [raw, shape] of [['42', 'number'], ['true', 'boolean']]) {
+    const { p, ids } = seedScene({ shots: 1 });
+    seedAction(ids[0], { end_state: raw });
+    assert.throws(
+      () => loadSceneInput({ projectId: p.id, sceneKey: SCENE }),
+      (e) => e.reason === 'SCENE_INPUT_INVALID_SHAPE' && e.column === 'end_state' && e.actual === shape,
+      `${raw} 应被拒为 ${shape}`,
+    );
+  }
+});
+
+test('W18 对象列的 null 按既定缺省语义处理（SQL NULL / JSON null / 空串都补 {}）', () => {
+  const { p, ids } = seedScene({ shots: 1 });
+  const cases = {
+    [seedAction(ids[0], { init_state: null })]: 'SQL NULL',
+    [seedAction(ids[0], { init_state: 'null' })]: 'JSON null',
+    [seedAction(ids[0], { init_state: '' })]: '空串',
+  };
+  const row = loadSceneInput({ projectId: p.id, sceneKey: SCENE }).rows[0];
+  assert.equal(row.actions.length, 3);
+  const byId = Object.fromEntries(row.actions.map((a) => [a.id, a]));
+  for (const [id, label] of Object.entries(cases)) {
+    assert.deepEqual(byId[id].init_state, {}, `${label} 应走缺省语义（{}），不应报形状错误`);
+  }
+});
+
+test('W19 数组列写成对象 → 拒绝（story_shots.time_slices 与 shot_actions.body_parts）', () => {
+  const a = seedScene({ shots: 1 });
+  db.prepare('UPDATE story_shots SET time_slices = ? WHERE id = ?').run('{}', a.ids[0]);
+  assert.throws(
+    () => loadSceneInput({ projectId: a.p.id, sceneKey: SCENE }),
+    (e) => e.reason === 'SCENE_INPUT_INVALID_SHAPE'
+      && e.table === 'story_shots' && e.column === 'time_slices' && e.actual === 'object',
+  );
+
+  const b = seedScene({ shots: 1 });
+  seedAction(b.ids[0], { body_parts: '{"a":1}' });
+  assert.throws(
+    () => loadSceneInput({ projectId: b.p.id, sceneKey: SCENE }),
+    (e) => e.reason === 'SCENE_INPUT_INVALID_SHAPE'
+      && e.table === 'shot_actions' && e.column === 'body_parts' && e.actual === 'object',
+  );
+});
+
+test('W20 已是对象/数组的输入同样过形状校验（不从字符串来也不放行）', () => {
+  const m = (kind) => ({ table: 'shot_actions', column: 'init_state', key: 'act_x', shot: 'sh_x', kind });
+  assert.throws(() => parseJsonColumn([], m('object')),
+    (e) => e.reason === 'SCENE_INPUT_INVALID_SHAPE' && e.actual === 'array');
+  assert.throws(() => parseJsonColumn({}, m('array')),
+    (e) => e.reason === 'SCENE_INPUT_INVALID_SHAPE' && e.actual === 'object');
+  assert.deepEqual(parseJsonColumn({ a: 1 }, m('object')), { a: 1 });
+  assert.deepEqual(parseJsonColumn([1], m('array')), [1]);
+  assert.equal(parseJsonColumn(null, m('object')), null);
+});
+
+test('W21 错误信息可定位：表名 + 列名 + 记录 id + 所属镜头 + 错误形状', () => {
+  const { p, ids } = seedScene({ shots: 1 });
+  const actId = seedAction(ids[0], { speed_json: '"fast"' });
+  let err;
+  try { loadSceneInput({ projectId: p.id, sceneKey: SCENE }); } catch (e) { err = e; }
+  assert.ok(err, '形状错误必须抛，不能被吞掉');
+  for (const part of ['shot_actions', 'speed_json', actId, ids[0], 'string', '对象']) {
+    assert.ok(err.message.includes(part), `错误信息缺少 ${part}：${err.message}`);
+  }
+  // 语法是合法的：不得误报成"不是合法 JSON"（两类失败必须分得开）
+  assert.equal(err.message.includes('不是合法 JSON'), false, err.message);
+});
 
 // ══ R1/R2：真实调用链接通 ═════════════════════════════════════════════════
 
