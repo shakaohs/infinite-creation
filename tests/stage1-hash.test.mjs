@@ -13,6 +13,9 @@ import {
 // fixture 见 tests/helpers/hash-fixture.mjs —— 跨 locale 探针共用同一份，否则两边比的是不同数据。
 import { fx, hashes, clone, block, action, shot, AD_SD, AD_H3, COMP } from './helpers/hash-fixture.mjs';
 
+// posRel 矩阵与 P4 共用一份数据（搬迁不改行为的唯一证据源）
+import { POS_REL_MATRIX, POS_REL_WARNING_CASES } from './fixtures/pos-rel-matrix.mjs';
+
 
 // ── R-01 ~ R-04 稳定性与规范化 ───────────────────────────────────────────
 test('R-01 同输入算两次 → 三者均相同', () => {
@@ -390,25 +393,15 @@ test('R-43 stripRefTrigger / stripRefSync 八个算例 + 未知字段必须保�
   assert.notEqual(hashes(a).source, hashes(b).source);
 });
 
-// ── R-44 posRel 13 行矩阵 ───────────────────────────────────────────────
+// ── R-44 posRel 13 行矩阵（数据在 tests/fixtures/pos-rel-matrix.mjs，与 P4 新路径共用）──
 test('R-44 posRel 13 行矩阵逐行核对', () => {
-  const R = (args) => posRel(args);
-  assert.equal(R({ x: 1.2, y: 3.4, z: 0, specSource: 'manual' }), 'known');                       // 1
-  assert.equal(R({ x: 1.2, y: 3.4, z: 0, specSource: 'ai' }), 'inferred');                       // 2
-  assert.equal(R({ x: 1.2, y: 3.4, z: null, specSource: 'manual' }), 'unknown');                 // 3
-  assert.equal(R({ x: 1.2, y: null, z: 0, specSource: 'manual' }), 'unknown');                   // 4
-  assert.equal(R({ x: null, y: null, z: null, specSource: 'manual' }), 'unknown');               // 5
-  assert.equal(R({ x: 1.2, y: 3.4, z: NaN, specSource: 'manual' }), 'unknown');                  // 6
-  assert.equal(R({ x: 1.2, y: 3.4, z: 0, metaEntry: { rel: 'known' }, specSource: 'ai' }), 'known');     // 7
-  assert.equal(R({ x: 1.2, y: 3.4, z: null, metaEntry: { rel: 'known' }, specSource: 'manual' }), 'unknown'); // 8
-  assert.equal(R({ x: 1.2, y: 3.4, z: 0, metaEntry: { rel: 'inferred' }, specSource: 'manual' }), 'inferred'); // 9
-  assert.equal(R({ x: 1.2, y: 3.4, z: 0, metaEntry: { rel: 'unknown' }, specSource: 'manual' }), 'unknown');   // 10
-  assert.equal(R({ x: null, y: null, z: null, metaEntry: { rel: 'not_applicable' }, specSource: 'ai' }), 'not_applicable'); // 11
-  assert.equal(R({ x: 1.2, y: 3.4, z: 0, metaEntry: { rel: 'not_applicable' }, specSource: 'manual' }), 'not_applicable');   // 12
-  assert.equal(R({ x: 1.2, y: 3.4, z: 0, specSource: 'legacy' }), 'unknown');                    // 13
+  for (const row of POS_REL_MATRIX) {
+    assert.equal(posRel(row.args), row.expected, `第 ${row.n} 行：${row.why}`);
+  }
   // 两条矛盾告警
-  assert.deepEqual(posRelDetail({ x: 1.2, y: 3.4, z: 0, metaEntry: { rel: 'not_applicable' } }).warnings, ['COORD_NA_WITH_VALUE']);
-  assert.deepEqual(posRelDetail({ x: 1.2, y: 3.4, z: null, metaEntry: { rel: 'known' } }).warnings, ['META_VALUE_MISMATCH']);
+  for (const c of POS_REL_WARNING_CASES) {
+    assert.deepEqual(posRelDetail(c.args).warnings, c.expectedWarnings, c.why);
+  }
 });
 
 // ── R-45 / R-47 / R-48 / R-49 属阶段 4 ─────────────────────────────────
