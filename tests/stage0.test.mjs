@@ -23,6 +23,15 @@ const sha256 = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).dig
 // 往真库里写了 2 个项目 4 条分镜。指纹基线能在第一时间把这种事故变成一条红色断言。
 const REAL_SHA_AT_START = fs.existsSync(REAL_DB) ? sha256(REAL_DB) : null;
 
+// 阶段 3 · P0：默认**不打开真实库**。T-08 / T-09 / T-05b 的历史库分支会以只读方式打开
+// data/ic.db —— 只读打开在 WAL 模式下仍会刷新 `ic.db-shm` 的 mtime（实测内容 SHA 不变，
+// 但"测试运行不得触碰真实库"这条门槛不接受任何形式的写窗口）。要跑历史库核对时显式开启：
+//   IC_ALLOW_REAL_DB_READ=1 npm test
+// 指纹基线 REAL_SHA_AT_START 仍然在任何 lib 加载前取（只 readFile，不开 SQLite）。
+const READ_REAL_DB = process.env.IC_ALLOW_REAL_DB_READ === '1';
+const SKIP_REAL = '默认不接触真实库（只读打开也会刷新 -shm）；需 IC_ALLOW_REAL_DB_READ=1 显式开启';
+
+
 // 先拿 env-guard（此时 IC_DATA_DIR 可能是未设置状态），再设隔离目录后加载 core
 delete process.env.IC_DATA_DIR;
 delete process.env.IC_DB_SQLITE_PATH;
@@ -156,6 +165,7 @@ test('T-06 备份恢复：删除测试库后从备份恢复，行数一致；T-0
 
 // ── T-08 ────────────────────────────────────────────────────────────────
 test('T-08 历史库结构核对：VACUUM INTO 取一致副本后 initSchema，不丢历史列 / blocking / 行数', (t) => {
+  if (!READ_REAL_DB) { t.skip(SKIP_REAL); return; }
   if (!fs.existsSync(REAL_DB)) { t.skip('真实库 data/ic.db 不存在，跳过'); return; }
   const copyDir = path.join(BASE, 'legacy'); fs.mkdirSync(copyDir, { recursive: true });
   const copy = path.join(copyDir, 'ic.db');
@@ -201,7 +211,8 @@ test('T-08 历史库结构核对：VACUUM INTO 取一致副本后 initSchema，�
 });
 
 // ── T-09 ────────────────────────────────────────────────────────────────
-test('T-09 业务数据保护：真库全程只读，测试结束时指纹与开跑前一致', () => {
+test('T-09 业务数据保护：真库全程只读，测试结束时指纹与开跑前一致', (t) => {
+  if (!READ_REAL_DB) { t.skip(SKIP_REAL); return; }
   if (!fs.existsSync(REAL_DB)) return;
   const d = new DatabaseSync(REAL_DB, { readOnly: true });
   const n = d.prepare('SELECT COUNT(*) AS n FROM shots').get().n;
@@ -229,7 +240,7 @@ test('T-05b Manifest：新库 PASS；历史库副本 PASS 且 seam/storyboard_sh
   assert.deepEqual(projFresh.tolerated, ['structured_spec'], '阶段 1 起 projects 必须恰好多这一列');
   assert.equal(projFresh.columnCount, 22);
 
-  if (!fs.existsSync(REAL_DB)) return;
+  if (!READ_REAL_DB || !fs.existsSync(REAL_DB)) return;
   const legacyCopy = path.join(BASE, 'legacy', 'ic.db');
   if (!fs.existsSync(legacyCopy)) return;
   const r = verifyManifest(legacyCopy, manifest);
