@@ -122,7 +122,12 @@ test('R4 __solver_input 的 qc_input_hash 与 shot_states.meta.__solver.hash 同
   const hit = JSON.parse(reportRows(ids[0])[0].hits).find((h) => h.rule_id === SOLVER_INPUT_ENTRY);
   assert.equal(hit.detail.qc_input_hash, out.solveHash);
   assert.equal(hit.detail.solver_version, out.solverVersion);
-  assert.match(String(hit.detail.rule_dependency_set), /^sha256:[0-9a-f]{64}$/);
+  assert.match(String(hit.detail.qc_dependency_hash), /^sha256:[0-9a-f]{64}$/);
+  // 六个正式字段 + hash_relation（R1-3 的细节在 stage3-p9r1 覆盖）
+  for (const k of ['qc_input_hash', 'state_snapshot_hash', 'qc_dependency_hash', 'ruleset_ver', 'hash_algo_ver', 'solver_version']) {
+    assert.ok(hit.detail[k], `__solver_input.detail 缺 ${k}`);
+  }
+  assert.ok(['same', 'state_older', 'qc_missing'].includes(hit.detail.hash_relation));
 
   for (const id of ids) {
     const meta = JSON.parse(db.prepare('SELECT meta FROM shot_states WHERE shot_id = ?').get(id).meta);

@@ -70,7 +70,6 @@ test('P1 求解结果按 8 列落库：state_source=solved、derived_from 成链
 
   const out = runSceneQuality({ projectId: p.id, sceneKey: SCENE });
   assert.equal(out.states.written.length, 3);
-  assert.deepEqual(out.states.deleted, []);
 
   for (const [i, id] of ids.entries()) {
     const row = stateRow(id);
@@ -193,19 +192,80 @@ test('P6 事务回滚：状态写入随外层失败整体撤销，不留半套',
   }
 });
 
-test('P7 场次里消失的镜头：状态行被清掉，不残留成幽灵结论', () => {
+test('P7 撤销自动清理承诺（R1-5）：删镜/移场不静默删状态，也不碰别的场次', () => {
   const { p, ids } = seedScene({ shots: 3 });
+  // 另建一场，用来证明"清理"没有越界
+  const other = insertStoryShot({
+    project_id: p.id, chapter_id: Chapters.list(p.id)[0].id, scene_key: 'S02_走廊',
+    shot_no: 99, global_no: 50, spec_source: 'ai', story_duration: 4,
+    speakers: [{ id: 'c1', type: 'on_screen' }], time_slices: [{ from: 0, to: 4 }],
+  });
+  upsertSceneStates(p.id, Chapters.list(p.id)[0], [{
+    scene_key: 'S02_走廊', coord_system: { active_area: [8, 5, 3] },
+    axis_lock: { pair: ['c1', 'c2'], left: 'c1', right: 'c2', axis_line: [[0.5, 0], [0.5, 1]] }, time_of_day: '夜',
+  }]);
   runSceneQuality({ projectId: p.id, sceneKey: SCENE });
-  assert.equal(stateRow(ids[2]) !== undefined, true);
+  runSceneQuality({ projectId: p.id, sceneKey: 'S02_走廊' });
 
+  const before = {
+    shot3: { ...stateRow(ids[2]) },
+    other: { ...stateRow(other.id) },
+  };
+  assert.ok(before.shot3.shot_id && before.other.shot_id);
+
+  // ① 真实删除一个镜头（**不用手删 shot_states 制造通过**）
   db.prepare('DELETE FROM shot_blockings WHERE shot_id = ?').run(ids[2]);
-  db.prepare('DELETE FROM shot_states WHERE shot_id = ?').run(ids[2]);
-  db.prepare('DELETE FROM qc_reports WHERE target_id = ?').run(ids[2]);
+  db.prepare('DELETE FROM shot_actions WHERE shot_id = ?').run(ids[2]);
   db.prepare('DELETE FROM story_shots WHERE id = ?').run(ids[2]);
 
+  // ② 真实移场：把第 2 镜挪到另一场
+  db.prepare('UPDATE story_shots SET scene_key = ? WHERE id = ?').run('S02_走廊', ids[1]);
+
   const out = runSceneQuality({ projectId: p.id, sceneKey: SCENE });
-  assert.equal(out.shotCount, 2);
-  assert.equal(stateRow(ids[2]), undefined);
+  assert.equal(out.shotCount, 1, '本场只剩第 1 镜');
+
+  // 行为如实：不删（撤销"会清理旧行"的承诺），且不动别的场次
+  assert.deepEqual({ ...stateRow(ids[2]) }, before.shot3, '被删镜的状态行不得被静默删除');
+  assert.deepEqual({ ...stateRow(other.id) }, before.other, '别的场次的状态行不得被误删');
+  // 被移场的那一镜：本场不再更新它，但行仍属于它自己（下一次在 S02 重建时才会更新）
+  assert.ok(stateRow(ids[1]), '移场镜的状态行不得被本场的重建删掉');
+  // 返回值不再宣称"清理了多少行"
+  assert.equal(Object.prototype.hasOwnProperty.call(out.states, 'deleted'), false);
+});
+
+test('P12 内容 Hash 剔除 `__solver`（R1-2）：只有版本戳变化不算内容变化', () => {
+  const base = {
+    shot_id: 's1', state_in: '{}', state_out: '{"a":1}',
+    meta: JSON.stringify({ 'chars.c1.pos': { rel: 'known', src: 'blocking:c1', conf: 1, ver: 1 }, __solver: { hash: 'sha256:aaa', solver_version: 'stage3.1' } }),
+    derived_from: 'scene_baseline', state_source: 'solved', conflicts: '[]',
+  };
+  const newer = { ...base, meta: JSON.stringify({ 'chars.c1.pos': { rel: 'known', src: 'blocking:c1', conf: 1, ver: 1 }, __solver: { hash: 'sha256:bbb', solver_version: 'stage3.1' } }) };
+  assert.equal(stateContentHash(base), stateContentHash(newer), '只换 __solver.hash 不应判为内容变化');
+
+  const changed = { ...base, state_out: '{"a":2}' };
+  assert.notEqual(stateContentHash(base), stateContentHash(changed), '业务内容变了必须判为变化');
+  // `__solver` 仍保留在库里（只是不参与比较）
+  assert.ok(JSON.parse(base.meta).__solver);
+});
+
+test('P13 输入变但派生内容没变（SH-8）：状态行不重写，hash_relation=state_older', () => {
+  const { p, ids } = seedScene({ shots: 1 });
+  const a = runSceneQuality({ projectId: p.id, sceneKey: SCENE });
+  const before = stateRow(ids[0]);
+  assert.equal(a.reports[0].hash_relation, 'same', '首次：状态刚被写入，A 与 B 同版');
+
+  // power_level 在求解输入 Hash 里，但不影响派生状态
+  db.prepare('UPDATE shot_blockings SET power_level = ? WHERE shot_id = ?').run('high', ids[0]);
+  const b = runSceneQuality({ projectId: p.id, sceneKey: SCENE });
+
+  assert.equal(b.states.written.length, 0, '内容没变却重写了状态行');
+  const after = stateRow(ids[0]);
+  assert.equal(after.updated_at, before.updated_at);
+  assert.equal(after.meta, before.meta, 'meta（含 __solver）必须保持上一版');
+  assert.notEqual(b.solveHash, a.solveHash, '输入确实变了');
+  assert.equal(b.reports[0].hash_relation, 'state_older');
+  assert.equal(b.reports[0].state_snapshot_hash, a.solveHash, '状态快照仍是旧版 Hash');
+  assert.equal(b.reports[0].qc_input_hash, b.solveHash, 'QC 输入是新版 Hash');
 });
 
 test('P8 持久化不回灌求解：写入状态后再跑，求解 Hash 不变', () => {
