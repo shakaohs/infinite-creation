@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// D48-05 · PostgreSQL 投影兼容性冒烟（D02-48 §六）
+// D48-05 / D49-02 · PostgreSQL 投影兼容性冒烟（D02-48 §六 + D02-49 §二、§五）
 //
 // 为什么是独立脚本而不是 node:test 用例：
 //   `lib/core/db.js` 在测试进程里**一律拒绝** PG（`TEST_REQUIRES_SQLITE`），因为 IC_DATA_DIR
 //   对 PG 没有隔离意义。这里不是测试进程，走应用真实连接路径。
 //
-// 七项（逐项打印 PASS/FAIL）：
+// 十项（逐项打印 PASS/FAIL）：D02-48 七项 + D02-49 三项候选守卫
 //   PGPROJ-01 单镜单段投影
 //   PGPROJ-02 一段多镜投影
 //   PGPROJ-03 重复投影（幂等：created=0 / updated=0 / unchanged=1）
@@ -13,6 +13,9 @@
 //   PGPROJ-05 显式分段完整性拒绝（漏镜 ⇒ UNIT_SHOT_COVERAGE_INCOMPLETE，零写入）
 //   PGPROJ-06 候选保护（旧段有候选 + 同段序新镜 ⇒ 换新 id，旧段/候选不动）
 //   PGPROJ-07 投影中途失败整体回滚（第二段 INSERT 注入失败 ⇒ 第一段也回滚）
+//   PGPROJ-08 候选存在 + 内容变化 ⇒ UNIT_SEGMENT_CANDIDATE_CONFLICT，段/候选不变
+//   PGPROJ-09 内容相同的重投影 ⇒ 允许（幂等），候选不动
+//   PGPROJ-10 候选存在 + 归属增加（合并）⇒ 拒绝，segment_id 不回写
 //
 // 安全前置：连到的库**必须是** `infinite_creation_test`，否则立即退出（exit 2），不执行任何写操作。
 // 不以 P2 的 19/19 锁测试作为投影证据（D02-48 §六 明令）。
@@ -60,7 +63,7 @@ async function preflight() {
 const num = (v) => Number(v);
 
 async function main() {
-  log('=== D48-05 · PostgreSQL 投影兼容性冒烟 ===');
+  log('=== PostgreSQL 投影兼容性冒烟（D02-48 D48-05 / D02-49 D49-02）===');
   const meta = await preflight();
   if (!String(meta.version).startsWith('16.')) {
     record('SELF', '服务端版本 16.x', false, meta.version);
@@ -220,6 +223,59 @@ async function main() {
       !!injErr && /injected failure/.test(String(injErr.message)) && inserts === 2
       && num(leftSegs.n) === 0 && segIdOf(d1.id) === '' && segIdOf(d2.id) === '',
       `err=${injErr && injErr.message} inserts=${inserts} segs=${leftSegs.n} d1='${segIdOf(d1.id)}' d2='${segIdOf(d2.id)}'`);
+
+    // ── 08~10 候选有效性守卫（D02-49 §二）──────────────────────────────────
+    const s4 = 'pg-d49-s4';
+    const e1 = insertStoryShot({
+      project_id: pid, chapter_id: cid, scene_key: 'S04', scene_uid: s4,
+      shot_no: 8, global_no: 8, visual_content: 'E1', story_duration: 4,
+    });
+    const re1 = projectSceneUnits({ projectId: pid, chapterId: cid, sceneUid: s4 });
+    const eSeg = re1.units[0].segment_id;
+    db.prepare('INSERT INTO shot_videos (id,project_id,shot_id,idx,video_path,seed,selected,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run('pg-cand-d49', pid, eSeg, 0, '/pg-cand-d49.mp4', 13, 1, 1, 1);
+
+    const eSegBefore = { ...db.prepare('SELECT * FROM shots WHERE id = ?').get(eSeg) };
+    const candBefore = { ...db.prepare('SELECT * FROM shot_videos WHERE id = ?').get('pg-cand-d49') };
+    db.prepare('UPDATE story_shots SET visual_content = ? WHERE id = ?').run('E1-改后', e1.id);
+    let guardErr = null;
+    try {
+      projectSceneUnits({ projectId: pid, chapterId: cid, sceneUid: s4 });
+    } catch (e) { guardErr = e; }
+    const eSegAfter = { ...db.prepare('SELECT * FROM shots WHERE id = ?').get(eSeg) };
+    const candAfter = { ...db.prepare('SELECT * FROM shot_videos WHERE id = ?').get('pg-cand-d49') };
+    record('PGPROJ-08', '候选存在 + 内容变化 ⇒ UNIT_SEGMENT_CANDIDATE_CONFLICT，段/候选逐列不变',
+      guardErr && guardErr.code === 'UNIT_SEGMENT_CANDIDATE_CONFLICT'
+      && guardErr.detail?.content_changed === true
+      && JSON.stringify(eSegBefore) === JSON.stringify(eSegAfter)
+      && JSON.stringify(candBefore) === JSON.stringify(candAfter),
+      `code=${guardErr && guardErr.code} changed=${guardErr && guardErr.detail && guardErr.detail.changed_fields}`
+      + ` segSame=${JSON.stringify(eSegBefore) === JSON.stringify(eSegAfter)} candSame=${JSON.stringify(candBefore) === JSON.stringify(candAfter)}`);
+
+    // 09：内容改回原值 ⇒ 完全幂等，允许
+    db.prepare('UPDATE story_shots SET visual_content = ? WHERE id = ?').run('E1', e1.id);
+    const re2 = projectSceneUnits({ projectId: pid, chapterId: cid, sceneUid: s4 });
+    const candAfter2 = { ...db.prepare('SELECT * FROM shot_videos WHERE id = ?').get('pg-cand-d49') };
+    record('PGPROJ-09', '内容相同的重投影 ⇒ 允许（created=0 / updated=0 / unchanged=1），候选不动',
+      re2.created === 0 && re2.updated === 0 && re2.unchanged === 1
+      && JSON.stringify(candBefore) === JSON.stringify(candAfter2),
+      `created=${re2.created} updated=${re2.updated} unchanged=${re2.unchanged} candSame=${JSON.stringify(candBefore) === JSON.stringify(candAfter2)}`);
+
+    // 10：归属增加（合并新镜）⇒ 拒绝
+    const e2 = insertStoryShot({
+      project_id: pid, chapter_id: cid, scene_key: 'S04', scene_uid: s4,
+      shot_no: 9, global_no: 9, visual_content: 'E2', story_duration: 3,
+    });
+    let mergeErr = null;
+    try {
+      projectSceneUnits({ projectId: pid, chapterId: cid, sceneUid: s4, units: [{ shot_ids: [e1.id, e2.id] }] });
+    } catch (e) { mergeErr = e; }
+    record('PGPROJ-10', '候选存在 + 归属增加（合并）⇒ 拒绝，两镜 segment_id 均未改回写',
+      mergeErr && mergeErr.code === 'UNIT_SEGMENT_CANDIDATE_CONFLICT'
+      && mergeErr.detail?.ownership_changed === true
+      && segIdOf(e1.id) === eSeg && segIdOf(e2.id) === '',
+      `code=${mergeErr && mergeErr.code} reason=${mergeErr && mergeErr.detail && mergeErr.detail.reason}`
+      + ` e1='${segIdOf(e1.id)}' e2='${segIdOf(e2.id)}' expect='${eSeg}'`);
   } finally {
     try { Projects.remove(pid); } catch (e) { log('[清理] 删除测试项目失败（不影响判定）：' + (e && e.message)); }
   }
@@ -231,7 +287,7 @@ function finish(meta) {
   const pass = results.filter((r) => r.ok).length;
   const fail = results.length - pass;
   log('');
-  log(`D48-05-RESULT ${JSON.stringify({
+  log(`PROJ-PG-RESULT ${JSON.stringify({
     server_version: meta.version, database: meta.database, backend_pid: meta.backendPid,
     total: results.length, pass, fail, ok: fail === 0,
     cases: results.map((r) => ({ id: r.id, ok: r.ok, detail: r.detail })),
@@ -242,6 +298,6 @@ function finish(meta) {
 main().catch((e) => {
   log('脚本异常：' + (e && e.message ? e.message : String(e)));
   if (e && e.stack) log(e.stack.split('\n').slice(0, 6).join('\n'));
-  log(`D48-05-RESULT ${JSON.stringify({ ok: false, error: String(e && e.message || e), cases: results })}`);
+  log(`PROJ-PG-RESULT ${JSON.stringify({ ok: false, error: String(e && e.message || e), cases: results })}`);
   process.exit(1);
 });

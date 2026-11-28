@@ -302,7 +302,8 @@ test('C01-15 测试D：同一逻辑镜重复投影 ⇒ 段 id 稳定、参数与
   assert.equal(r2.reused_with_candidates[0].content_changed, false);
 });
 
-test('C01-16 测试E：同一逻辑段内容修改 ⇒ 段 id 不变、候选关联显式保留并报告', () => {
+// D02-49 §二推翻了 D02-48 测试E 的处置：内容变化 + 段上有候选 ⇒ fail-closed（不得覆盖）。
+test('C01-16 测试E（D02-49 修订）：同一逻辑段内容修改且有候选 ⇒ UNIT_SEGMENT_CANDIDATE_CONFLICT', () => {
   const { p, ch, sceneUid, ids } = mkScene({ shots: 1 });
   const r1 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
   const segId = r1.units[0].segment_id;
@@ -310,26 +311,29 @@ test('C01-16 测试E：同一逻辑段内容修改 ⇒ 段 id 不变、候选关
   db.prepare('UPDATE shots SET video_prompt = ?, status = ? WHERE id = ?').run('保留提示词', 'done', segId);
   // 候选自己的指纹（`shot_videos.input_hash` 是候选身份的一部分，投影不得碰）
   db.prepare('UPDATE shot_videos SET input_hash = ? WHERE id = ?').run('hash-e', 'v-d48-e');
+  const before = segRowOf(segId);
 
   db.prepare('UPDATE story_shots SET visual_content = ? WHERE id = ?').run('改后画面', ids[0]);
-  const r2 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  assert.throws(
+    () => projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid }),
+    (e) => e.code === 'UNIT_SEGMENT_CANDIDATE_CONFLICT'
+      && e.detail.segment_id === segId && e.detail.candidates === 1
+      && e.detail.content_changed === true && e.detail.ownership_changed === false
+      && e.detail.changed_fields.includes('visual'),
+  );
 
-  assert.equal(r2.units[0].segment_id, segId, '同一逻辑段身份必须稳定');
-  assert.equal(r2.updated, 1);
-  const row = segRowOf(segId);
-  assert.equal(row.visual, '改后画面', 'A 组应更新');
-  assert.equal(row.video_prompt, '保留提示词', 'B 组不得被投影覆盖');
-  assert.equal(row.status, 'done', 'C 组不得被投影重置');
-
+  assert.deepEqual({ ...segRowOf(segId) }, before, '段内容必须逐列不变（不得覆盖）');
   const cand = db.prepare('SELECT * FROM shot_videos WHERE id = ?').get('v-d48-e');
-  assert.ok(cand, '候选行必须保留');
   assert.equal(cand.shot_id, segId, '候选与段的关联不得被改写');
   assert.equal(cand.input_hash, 'hash-e', '候选指纹不得被投影改写');
   assert.equal(Number(cand.selected), 1, '选中状态不得被投影改动');
-  assert.equal(r2.reused_with_candidates.length, 1);
-  assert.equal(r2.reused_with_candidates[0].segment_id, segId);
-  assert.equal(r2.reused_with_candidates[0].candidates, 1);
-  assert.equal(r2.reused_with_candidates[0].content_changed, true, '内容在候选存在时变化必须显式报告');
+  assert.equal(segIdOf(ids[0]), segId, 'segment_id 保持原归属');
+
+  // 候选不存在 ⇒ 同一处改动可以正常更新（对照，证明拒绝的原因确实是候选）
+  db.prepare('DELETE FROM shot_videos WHERE id = ?').run('v-d48-e');
+  const r3 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  assert.equal(r3.updated, 1);
+  assert.equal(segRowOf(segId).visual, '改后画面');
 });
 
 test('C01-17 候选冲突换名后，显式 units（不给 segment_id）不得把身份翻回旧段序', () => {
