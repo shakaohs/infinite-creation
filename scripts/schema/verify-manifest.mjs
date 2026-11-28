@@ -67,8 +67,8 @@ export function verify(dbPath, profile) {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
   const db = new DatabaseSync(dbPath, { readOnly: true });
   const results = [];
-  for (const group of ['ops', 'archive', 'biz', 'd02_ext']) {
-    for (const [name, entry] of Object.entries(manifest.groups[group])) {
+  for (const group of ['ops', 'archive', 'biz', 'd02_ext', 'stage_a']) {
+    for (const [name, entry] of Object.entries(manifest.groups[group] || {})) {
       results.push({ group, ...checkTable(db, name, entry, profile) });
     }
   }
@@ -90,6 +90,7 @@ export function verify(dbPath, profile) {
       archive: Object.keys(manifest.groups.archive).length,
       biz: Object.keys(manifest.groups.biz).length,
       d02_ext: Object.keys(manifest.groups.d02_ext).length,
+      stage_a: Object.keys(manifest.groups.stage_a || {}).length,
       existing: Object.keys(manifest.existing).length,
       pendingEmpty: Object.keys(manifest.pending || {}).length === 0,
     },
@@ -119,7 +120,7 @@ function main() {
     console.log(JSON.stringify(r, null, 2));
   } else {
     console.log(`profile=${r.profile}  entries=${r.entries}  pass=${r.pass}  fail=${r.fail}`);
-    console.log(`groups: ops=${r.groupsAssert.ops} archive=${r.groupsAssert.archive} biz=${r.groupsAssert.biz} d02_ext=${r.groupsAssert.d02_ext} existing=${r.groupsAssert.existing} pending空=${r.groupsAssert.pendingEmpty}`);
+    console.log(`groups: ops=${r.groupsAssert.ops} archive=${r.groupsAssert.archive} biz=${r.groupsAssert.biz} d02_ext=${r.groupsAssert.d02_ext} stage_a=${r.groupsAssert.stage_a} existing=${r.groupsAssert.existing} pending空=${r.groupsAssert.pendingEmpty}`);
     for (const f of r.failed) {
       console.log(`FAIL ${f.table} (${f.group})${f.error ? ' ' + f.error : ''}`);
       if (f.missing?.length) console.log('   missing:', f.missing.join(','));

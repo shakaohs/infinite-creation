@@ -99,16 +99,19 @@ test('S-08 三处"不许加列"逐条核对', () => {
   assert.ok(!fresh.tableColumns('render_adaptations').includes('g0_locks'));
 });
 
-test('S-09 Manifest 条目 23 / groups 21 / existing 2 / pending 空', () => {
+test('S-09 Manifest 条目 25 / groups 21 / stage_a 1 / existing 3 / pending 空', () => {
   const m = buildManifest();
   assert.equal(m.counts.groups_total, 21);
-  assert.equal(m.counts.existing, 2);
-  assert.equal(m.counts.entries_total, 23);
+  assert.equal(m.counts.stage_a, 1);
+  assert.equal(m.counts.existing, 3);
+  assert.equal(m.counts.entries_total, 25);
   assert.deepEqual(Object.keys(m.pending), []);
   assert.deepEqual(Object.keys(m.groups.ops), ['migration_batches', 'migration_items', 'migration_edges']);
   assert.deepEqual(Object.keys(m.groups.archive), ['legacy_artifacts']);
   assert.deepEqual(Object.keys(m.groups.d02_ext).sort(), ['adaptation_locks', 'render_selections', 'render_task_jobs']);
-  assert.deepEqual(Object.keys(m.existing).sort(), ['projects', 'shots']);
+  assert.deepEqual(Object.keys(m.existing).sort(), ['projects', 'shot_videos', 'shots']);
+  // P10-A A-04：continuity_runs 单列成组，shot_videos 纳入既有表 —— 两张都不能落进 21 张新建表
+  assert.deepEqual(Object.keys(m.groups.stage_a), ['continuity_runs']);
 });
 
 test('S-10 生成器重复执行结果稳定（两次 build 字节一致）', () => {
@@ -127,10 +130,10 @@ test('S-11 生成器不读数据库（只解析 DDL 文本）', () => {
   }
 });
 
-test('S-12 fresh 库 verify 23/23 通过；groups 断言正确', () => {
+test('S-12 fresh 库 verify 25/25 通过；groups 断言正确', () => {
   const r = verify(fresh.file, 'fresh');
   assert.equal(r.ok, true, JSON.stringify(r.failed));
-  assert.equal(r.entries, 23);
+  assert.equal(r.entries, 25);
   assert.equal(r.fail, 0);
   assert.equal(r.groupsAssert.pendingEmpty, true);
   assert.equal(r.groupsAssert.groups_total ?? 21, 21);

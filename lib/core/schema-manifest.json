@@ -5,6 +5,7 @@
     "d02_01": "docs/D02/D02-01-工程实施总体方案.md",
     "d02_03": "docs/D02/D02-03-阶段1前置设计决策记录.md",
     "db_js": "lib/core/db.js",
+    "stage_a": "lib/core/schema/stage-a.js",
     "generatedFrom": "frozen DDL text only, never the database"
   },
   "generatedAt": "",
@@ -13,9 +14,10 @@
     "archive": 1,
     "biz": 14,
     "d02_ext": 3,
+    "stage_a": 1,
     "groups_total": 21,
-    "existing": 2,
-    "entries_total": 23
+    "existing": 3,
+    "entries_total": 25
   },
   "groups": {
     "ops": {
@@ -176,7 +178,9 @@
           "fill_confidence",
           "qc_status",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "segment_id",
+          "scene_uid"
         ],
         "tolerate_extra_columns": [],
         "required_columns": []
@@ -465,6 +469,24 @@
         "tolerate_extra_columns": [],
         "required_columns": []
       }
+    },
+    "stage_a": {
+      "continuity_runs": {
+        "kind": "stage_a",
+        "source": "lib/core/schema/stage-a.js",
+        "expected_columns": [
+          "id",
+          "project_id",
+          "scene_uid",
+          "run_no",
+          "input_hash",
+          "status",
+          "error_code",
+          "created_at"
+        ],
+        "tolerate_extra_columns": [],
+        "required_columns": []
+      }
     }
   },
   "existing": {
@@ -561,6 +583,30 @@
         "status",
         "structured_spec"
       ]
+    },
+    "shot_videos": {
+      "kind": "existing",
+      "source": "lib/core/db.js",
+      "expected_columns": [
+        "id",
+        "project_id",
+        "shot_id",
+        "idx",
+        "video_path",
+        "seed",
+        "selected",
+        "created_at",
+        "updated_at",
+        "input_hash"
+      ],
+      "tolerate_extra_columns": [],
+      "required_columns": [
+        "id",
+        "project_id",
+        "shot_id",
+        "video_path",
+        "input_hash"
+      ]
     }
   },
   "rules": [
@@ -568,8 +614,9 @@
     "新建库：expected_columns 必须完全相等，extra 必须为 0",
     "历史库：expected 必须齐；extra 只能是 tolerate_extra_columns 的子集；出现第三项未知列即 FAIL",
     "required_columns 在两种库上都必须存在，缺失即 FAIL",
-    "既有 shots / projects 不在新建表清单内，永不进入 DROP 回滚",
-    "expect 列集合由生成器从冻结 DDL 文本解析，禁止手写"
+    "既有 shots / projects / shot_videos 不在新建表清单内，永不进入 DROP 回滚",
+    "expect 列集合由生成器从冻结 DDL 文本解析，禁止手写",
+    "stage_a 组的列集来自 lib/core/schema/stage-a.js 里的 ALTER 原文与 CREATE TABLE 原文（D02-40 §3.1/§7.1 的转录），不读数据库"
   ],
   "pending": {}
 }

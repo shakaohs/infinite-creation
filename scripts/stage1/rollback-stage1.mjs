@@ -26,6 +26,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { assertEnv, assertDbIsolation, resolvePathDetail } from '../../lib/core/env-guard.js';
 import { STAGE1_TABLES } from '../../lib/core/schema/tables.js';
+import { STAGE_A_TABLE_NAMES } from '../../lib/core/schema/stage-a.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MANIFEST = path.join(ROOT, 'lib', 'core', 'schema-manifest.json');
@@ -38,6 +39,11 @@ const NEVER_DROP = ['shots', 'projects', 'chapters', 'assets', 'shot_videos', 'c
 // （从 manifest 反推 = 自己证明自己，manifest 被改坏时白名单等于没有）
 const EXPECTED = STAGE1_TABLES.map((t) => t.name);
 const EXPECTED_GROUP = new Map(STAGE1_TABLES.map((t) => [t.name, t.group]));
+
+// P10-A 阶段 A 新建的表（continuity_runs）。它**不属于阶段 1 的 21 张**，也不属于 12 张既有表，
+// 但降级时必须一起清掉：留成孤儿表的后果是"库看起来回到了 legacy，却多出一张没人维护的表"，
+// 下一次 initSchema 又会把它建回来，两边对不上。白名单同样来自冻结模块，不从 manifest 反推。
+const STAGE_A_EXPECTED = STAGE_A_TABLE_NAMES;
 
 function arg(name) {
   const i = process.argv.indexOf(name);
@@ -131,8 +137,22 @@ function resolveTargets(manifestPath) {
     if (NEVER_DROP.includes(t)) fail(`${t} 在"永不删除"清单里`);
   }
 
-  // 按建表顺序返回（DROP 时逆序）
-  return EXPECTED.slice();
+  // 阶段 A 组：必须与冻结模块的清单**完全一致**（少一张多一张都拒）
+  const stageA = groups.stage_a && typeof groups.stage_a === 'object' && !Array.isArray(groups.stage_a)
+    ? Object.keys(groups.stage_a)
+    : [];
+  const unknownA = stageA.filter((n) => !STAGE_A_EXPECTED.includes(n));
+  if (unknownA.length) fail(`manifest.groups.stage_a 出现未知表：${unknownA.join(',')}`);
+  const missingA = STAGE_A_EXPECTED.filter((n) => !stageA.includes(n));
+  if (missingA.length) fail(`manifest.groups.stage_a 缺少阶段 A 正式表：${missingA.join(',')}`);
+  for (const t of stageA) {
+    if (NEVER_DROP.includes(t)) fail(`${t} 在"永不删除"清单里`);
+  }
+
+  // 按建表顺序返回（DROP 时逆序）；阶段 A 表排在最前（建得最晚）
+  // 两块分开返回：`targets` 这个数字在历史报告里恒为 21（阶段 1 的 21 张），
+  // 阶段 A 的表单独计，避免"21 张"这个已被引用的口径悄悄变成 22。
+  return { stage1: EXPECTED.slice(), stageA: stageA.slice(), all: [...EXPECTED, ...stageA] };
 }
 
 function main() {
@@ -145,7 +165,8 @@ function main() {
   const guard = guardBeforeOpen(dbInput);
   // manifest 可换路径只为"验证白名单确实在起作用"（拿一份被改坏的 manifest 试拒绝）；
   // 换路径不降低安全性：白名单的真正依据是冻结模块 STAGE1_TABLES，不是这个文件。
-  const targets = resolveTargets(arg('--manifest') || MANIFEST);
+  const resolved = resolveTargets(arg('--manifest') || MANIFEST);
+  const targets = resolved.all;
 
   // 干跑：只读连接（SQLite 层面就写不进去，不靠"记得别写"）
   const db = execute
@@ -166,7 +187,8 @@ function main() {
     mode: execute ? 'execute' : 'dry-run',
     connection: execute ? 'read-write' : 'read-only',
     execute,
-    targets: targets.length,
+    targets: resolved.stage1.length,
+    stageATargets: resolved.stageA,
     whitelist: 'exact',
     blockers: [],
     plan: [],

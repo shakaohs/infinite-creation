@@ -85,6 +85,18 @@ export function parseTablesFromJs(src) {
   return out;
 }
 
+/** 从 markdown / JS 文本里抽取所有 `ALTER TABLE x ADD COLUMN y` → { table: [col, ...] } */
+export function parseAlterAddColumns(src) {
+  const out = {};
+  const re = /ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)/gi;
+  let m;
+  while ((m = re.exec(src))) {
+    const [, table, col] = m;
+    (out[table] ||= []).push(col);
+  }
+  return out;
+}
+
 export function readText(absPath) {
   return fs.readFileSync(absPath, 'utf8');
 }

@@ -230,6 +230,9 @@ test('T-05b Manifest：新库 PASS；历史库副本 PASS 且 seam/storyboard_sh
   // 阶段 0 的这份快照是"历史证据"、冻结不更新，所以在内存里补一条容忍，
   // 并**显式断言多出来的恰好是这一列**——这是把变化写清楚，不是放宽标准。
   manifest.tables.projects.tolerate_extra = ['structured_spec'];
+  // P10-A A-03（D-30-08）给 `shot_videos` 补了 `input_hash`，同理：阶段 0 快照冻结不改，
+  // 在内存里补一条容忍，并在下面**显式断言多出来的恰好是这一列**（不是放宽标准）。
+  manifest.tables.shot_videos.tolerate_extra = ['input_hash'];
 
   const fresh = verifyManifest(path.join(FRESH, 'ic.db'), manifest);
   assert.equal(fresh.ok, true, '新库 manifest 校验应 PASS：' + JSON.stringify(fresh.tables.filter((x) => x.status === 'FAIL')));
@@ -239,6 +242,9 @@ test('T-05b Manifest：新库 PASS；历史库副本 PASS 且 seam/storyboard_sh
   const projFresh = fresh.tables.find((x) => x.table === 'projects');
   assert.deepEqual(projFresh.tolerated, ['structured_spec'], '阶段 1 起 projects 必须恰好多这一列');
   assert.equal(projFresh.columnCount, 22);
+  const svFresh = fresh.tables.find((x) => x.table === 'shot_videos');
+  assert.deepEqual(svFresh.tolerated, ['input_hash'], '阶段 A 起 shot_videos 必须恰好多这一列');
+  assert.equal(svFresh.columnCount, 10);
 
   if (!READ_REAL_DB || !fs.existsSync(REAL_DB)) return;
   const legacyCopy = path.join(BASE, 'legacy', 'ic.db');
