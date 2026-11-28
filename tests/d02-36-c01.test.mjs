@@ -176,3 +176,184 @@ test('C01-10 投影不得借 system writer；对外名 projectRenderUnits 与 pr
   );
   assert.equal(projectRenderUnits, projectSceneUnits);
 });
+
+// ── D02-48 定向补充（D48-01 完整覆盖 / D48-02 候选隔离）──────────────────────
+
+function addCandidate(pid, segId, vid) {
+  db.prepare('INSERT INTO shot_videos (id,project_id,shot_id,idx,video_path,seed,selected,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(vid, pid, segId, 0, '/cand-' + vid + '.mp4', 7, 1, 1, 1);
+}
+const segRowOf = (id) => db.prepare('SELECT * FROM shots WHERE id = ?').get(id);
+const segIdOf = (shotId) => db.prepare('SELECT segment_id FROM story_shots WHERE id = ?').get(shotId).segment_id;
+
+test('C01-11 测试A：显式 units 遗漏镜头 ⇒ 拒绝且不留任何写入', () => {
+  const { p, ch, sceneUid, ids } = mkScene({ shots: 3 });
+  const r0 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  const before = segRows(p.id).map((x) => ({ ...x }));
+  const beforeSegIds = ids.map(segIdOf);
+  const logsBefore = listChanges(p.id, { limit: 500 }).length;
+
+  assert.throws(
+    () => projectSceneUnits({
+      projectId: p.id, chapterId: ch.id, sceneUid,
+      units: [{ shot_ids: [ids[0], ids[1]] }],   // 少了 ids[2]
+    }),
+    (e) => e.code === 'UNIT_SHOT_COVERAGE_INCOMPLETE'
+      && Array.isArray(e.detail?.expected_shot_ids) && e.detail.expected_shot_ids.length === 3
+      && Array.isArray(e.detail?.actual_shot_ids) && e.detail.actual_shot_ids.length === 2
+      && e.detail.missing_shot_ids.length === 1 && e.detail.missing_shot_ids[0] === ids[2]
+      && Array.isArray(e.detail?.duplicated_shot_ids) && e.detail.duplicated_shot_ids.length === 0,
+  );
+  assert.equal(segRows(p.id).length, before.length, '不得新增段');
+  assert.deepEqual(segRows(p.id).map((x) => ({ ...x })), before, '原有段必须逐列不变');
+  assert.deepEqual(ids.map(segIdOf), beforeSegIds, 'segment_id 不得被回写');
+  assert.equal(listChanges(p.id, { limit: 500 }).length, logsBefore, '失败不得产生审计日志');
+  assert.equal(r0.created, 3);
+});
+
+test('C01-12 测试B：一镜出现在两个段 ⇒ 拒绝且整体回滚', () => {
+  const { p, ch, sceneUid, ids } = mkScene({ shots: 2 });
+  assert.throws(
+    () => projectSceneUnits({
+      projectId: p.id, chapterId: ch.id, sceneUid,
+      units: [{ shot_ids: [ids[0], ids[1]] }, { shot_ids: [ids[0]] }],
+    }),
+    (e) => e.code === 'UNIT_SHOT_DUPLICATED' && e.detail.duplicated_shot_ids.includes(ids[0]),
+  );
+  assert.equal(segRows(p.id).length, 0, '一行段都不许留');
+  assert.deepEqual(ids.map(segIdOf), ['', ''], 'segment_id 必须保持空串');
+});
+
+test('C01-13 写入中途失败（第二段 INSERT 抛错）⇒ 第一段也回滚', () => {
+  const { p, ch, sceneUid, ids } = mkScene({ shots: 2 });
+  const orig = db.prepare.bind(db);
+  let n = 0;
+  db.prepare = (sql) => {
+    if (/INSERT INTO shots/i.test(sql)) {
+      n += 1;
+      if (n === 2) throw new Error('injected failure on 2nd insert');
+    }
+    return orig(sql);
+  };
+  try {
+    assert.throws(() => projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid }), /injected failure/);
+  } finally {
+    db.prepare = orig;
+  }
+  assert.equal(n, 2, '确实执行到第二段才失败');
+  assert.equal(segRows(p.id).length, 0, '第一段必须一起回滚');
+  assert.deepEqual(ids.map(segIdOf), ['', '']);
+});
+
+test('C01-14 测试C：旧段仍有候选时，同段序新镜不得复用该段 id', () => {
+  const { p, ch, sceneUid, ids } = mkScene({ shots: 2 });
+  projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  const segs = segRows(p.id);
+  const old = { ...segs[1] };
+  addCandidate(p.id, old.id, 'v-d48-c');
+
+  // 旧镜被删 ⇒ 段失去归属，但候选在 ⇒ 段必须保留
+  db.prepare('DELETE FROM story_shots WHERE id = ?').run(ids[1]);
+
+  // 新镜进入同场次、同段序（global_no 最大 ⇒ idx=2）
+  const nr = insertStoryShot({
+    project_id: p.id, chapter_id: ch.id, scene_key: 'S01_病房', scene_uid: sceneUid,
+    shot_no: 3, global_no: 3, visual_content: '新画面', story_duration: 6,
+  });
+
+  const r = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  const after = segRowOf(old.id);
+  assert.deepEqual({ ...after }, old, '旧段内容必须逐列不变（不得被新镜覆盖）');
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM shot_videos WHERE shot_id = ?').get(old.id).n), 1, '旧候选必须还在');
+  assert.equal(db.prepare('SELECT shot_id FROM shot_videos WHERE id = ?').get('v-d48-c').shot_id, old.id, '候选不得被改挂到新段');
+
+  const newSegId = segIdOf(nr.id);
+  assert.ok(newSegId && newSegId !== old.id, '新镜头不得指向旧段');
+  const newSeg = segRowOf(newSegId);
+  assert.equal(newSeg.visual, '新画面');
+  assert.equal(Number(newSeg.duration), 6);
+  assert.equal(r.created, 1, '必须新建一段');
+  assert.equal(r.conflicts.length, 1);
+  assert.equal(r.conflicts[0].base_segment_id, old.id);
+  assert.equal(r.conflicts[0].assigned_segment_id, newSegId);
+  assert.equal(r.conflicts[0].reason, 'orphaned_with_candidates');
+  assert.deepEqual(r.blocked.map((b) => b.segment_id), [old.id]);
+});
+
+test('C01-15 测试D：同一逻辑镜重复投影 ⇒ 段 id 稳定、参数与候选不变、无审计', () => {
+  const { p, ch, sceneUid } = mkScene({ shots: 2 });
+  const r1 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  const segIds = r1.units.map((u) => u.segment_id);
+  db.prepare('UPDATE shots SET video_prompt = ?, status = ? WHERE id = ?').run('用户参数', 'done', segIds[0]);
+  addCandidate(p.id, segIds[0], 'v-d48-d');
+  const before = segRows(p.id).map((x) => ({ ...x }));
+  const logsBefore = listChanges(p.id, { limit: 500 }).length;
+
+  const r2 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  assert.deepEqual(r2.units.map((u) => u.segment_id), segIds, '段 id 必须稳定');
+  assert.equal(r2.created, 0);
+  assert.equal(r2.updated, 0);
+  assert.equal(r2.unchanged, 2);
+  assert.deepEqual(segRows(p.id).map((x) => ({ ...x })), before, '生成参数/候选/内容都不得变');
+  assert.equal(segRowOf(segIds[0]).video_prompt, '用户参数');
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM shot_videos WHERE shot_id = ?').get(segIds[0]).n), 1);
+  assert.equal(listChanges(p.id, { limit: 500 }).length, logsBefore, '无重复内容审计');
+  assert.equal(r2.reused_with_candidates.length, 1);
+  assert.equal(r2.reused_with_candidates[0].content_changed, false);
+});
+
+test('C01-16 测试E：同一逻辑段内容修改 ⇒ 段 id 不变、候选关联显式保留并报告', () => {
+  const { p, ch, sceneUid, ids } = mkScene({ shots: 1 });
+  const r1 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  const segId = r1.units[0].segment_id;
+  addCandidate(p.id, segId, 'v-d48-e');
+  db.prepare('UPDATE shots SET video_prompt = ?, status = ? WHERE id = ?').run('保留提示词', 'done', segId);
+  // 候选自己的指纹（`shot_videos.input_hash` 是候选身份的一部分，投影不得碰）
+  db.prepare('UPDATE shot_videos SET input_hash = ? WHERE id = ?').run('hash-e', 'v-d48-e');
+
+  db.prepare('UPDATE story_shots SET visual_content = ? WHERE id = ?').run('改后画面', ids[0]);
+  const r2 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+
+  assert.equal(r2.units[0].segment_id, segId, '同一逻辑段身份必须稳定');
+  assert.equal(r2.updated, 1);
+  const row = segRowOf(segId);
+  assert.equal(row.visual, '改后画面', 'A 组应更新');
+  assert.equal(row.video_prompt, '保留提示词', 'B 组不得被投影覆盖');
+  assert.equal(row.status, 'done', 'C 组不得被投影重置');
+
+  const cand = db.prepare('SELECT * FROM shot_videos WHERE id = ?').get('v-d48-e');
+  assert.ok(cand, '候选行必须保留');
+  assert.equal(cand.shot_id, segId, '候选与段的关联不得被改写');
+  assert.equal(cand.input_hash, 'hash-e', '候选指纹不得被投影改写');
+  assert.equal(Number(cand.selected), 1, '选中状态不得被投影改动');
+  assert.equal(r2.reused_with_candidates.length, 1);
+  assert.equal(r2.reused_with_candidates[0].segment_id, segId);
+  assert.equal(r2.reused_with_candidates[0].candidates, 1);
+  assert.equal(r2.reused_with_candidates[0].content_changed, true, '内容在候选存在时变化必须显式报告');
+});
+
+test('C01-17 候选冲突换名后，显式 units（不给 segment_id）不得把身份翻回旧段序', () => {
+  const { p, ch, sceneUid, ids } = mkScene({ shots: 2 });
+  projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  const segs = segRows(p.id);
+  addCandidate(p.id, segs[1].id, 'v-d48-f');
+  db.prepare('DELETE FROM story_shots WHERE id = ?').run(ids[1]);
+  const nr = insertStoryShot({
+    project_id: p.id, chapter_id: ch.id, scene_key: 'S01_病房', scene_uid: sceneUid,
+    shot_no: 3, global_no: 3, visual_content: '新画面', story_duration: 6,
+  });
+  const r1 = projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid });
+  const altSeg = segIdOf(nr.id);
+  assert.notEqual(altSeg, segs[1].id);
+
+  // 显式分段但**不给** segment_id：段序 base 会再次撞上旧段 id，此时必须保持 alt 身份
+  const r2 = projectSceneUnits({
+    projectId: p.id, chapterId: ch.id, sceneUid,
+    units: [{ shot_ids: [ids[0]] }, { shot_ids: [nr.id] }],
+  });
+  assert.equal(segIdOf(nr.id), altSeg, '身份不得在 alt/base 之间翻动');
+  assert.equal(r2.created, 0, '不得另建一段');
+  assert.ok(segRowOf(segs[1].id), '旧段（有候选）仍在');
+  assert.equal(db.prepare('SELECT shot_id FROM shot_videos WHERE id = ?').get('v-d48-f').shot_id, segs[1].id);
+  assert.ok(r1.conflicts.length === 1 && r2.conflicts.length === 0);
+});

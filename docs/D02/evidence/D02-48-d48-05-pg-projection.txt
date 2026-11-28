@@ -1,0 +1,28 @@
+# D02-48 · D48-05 PostgreSQL 投影兼容性冒烟 · 取证
+# 生成时间：2026-11-28 17:21 (CST)｜代码基线：D02-48 定向修复后（未含报告提交）
+# 服务端：PostgreSQL 16.9（便携版 D://pg16）
+# 测试库：infinite_creation_test（独立库；脚本前置自检库名，非该库立即 exit 2，不写任何数据）
+# 端口：127.0.0.1:55433（55432 本轮被本机其它进程占用，PG 报 bind Permission denied；仅端口不同，不影响取证口径）
+# 连接：脚本内独立连接，走应用真实连接路径（IC_DB=postgres + DATABASE_URL）；不使用 P2 锁测试，不以其 19/19 作证
+# 收尾：pg_ctl -m fast stop，server stopped
+# 命令：PGHOST=127.0.0.1 PGPORT=55433 PGUSER=postgres PGDATABASE=infinite_creation_test node scripts/verify/tst-proj-pg.mjs
+
+waiting for server to start.... done
+server started
+[PG] ready
+=== D48-05 · PostgreSQL 投影兼容性冒烟 ===
+[自检] 服务端版本=16.9 库名=infinite_creation_test 后端pid=42548
+[INFO][2026-11-28T09:21:43.061Z] 数据库驱动：PostgreSQL
+PASS  SELF-PG  应用层连上 PostgreSQL  dialect=postgres
+PASS  PGPROJ-01  单镜单段投影：1 镜 ⇒ 1 段，A 组取自镜  created=1 idx=1 visual=A duration=4
+PASS  PGPROJ-02  一段多镜投影：两镜合并为 1 段，内容按行拼接、时长相加  units=1 duration=9 visual="A\nB" segCount=1
+PASS  PGPROJ-03  重复投影幂等：created=0 / updated=0 / unchanged=1，整行不变  created=0 updated=0 unchanged=1
+PASS  PGPROJ-04  segment_id 回写：两镜都指向合并后的同一段  a=seg_fcff0589ec252531134395a0dbd70a3d b=seg_fcff0589ec252531134395a0dbd70a3d expect=seg_fcff0589ec252531134395a0dbd70a3d
+PASS  PGPROJ-05  显式分段漏镜 ⇒ UNIT_SHOT_COVERAGE_INCOMPLETE，且零写入  code=UNIT_SHOT_COVERAGE_INCOMPLETE missing=29c52e0f-c302-4a94-b8e7-3e283bf8aaa6 c.segment_id='' segCount=1
+PASS  PGPROJ-06  候选保护：旧段有候选 + 同段序新镜 ⇒ 换新 id，旧段/候选不动  oldSeg=seg_9ba61d3a732d4646e95e39c380c7108b newSeg=seg_d9dafe80ed731fec8efb00aa0a073f03 oldVisual=旧镜画面 cand.shot_id=seg_9ba61d3a732d4646e95e39c380c7108b conflicts=["orphaned_with_candidates"] blocked=1
+PASS  PGPROJ-07  投影中途失败整体回滚：第二段 INSERT 抛错 ⇒ 第一段也不留、segment_id 不回写  err=injected failure on 2nd insert inserts=2 segs=0 d1='' d2=''
+
+D48-05-RESULT {"server_version":"16.9","database":"infinite_creation_test","backend_pid":42548,"total":8,"pass":8,"fail":0,"ok":true,"cases":[{"id":"SELF-PG","ok":true,"detail":"dialect=postgres"},{"id":"PGPROJ-01","ok":true,"detail":"created=1 idx=1 visual=A duration=4"},{"id":"PGPROJ-02","ok":true,"detail":"units=1 duration=9 visual=\"A\\nB\" segCount=1"},{"id":"PGPROJ-03","ok":true,"detail":"created=0 updated=0 unchanged=1"},{"id":"PGPROJ-04","ok":true,"detail":"a=seg_fcff0589ec252531134395a0dbd70a3d b=seg_fcff0589ec252531134395a0dbd70a3d expect=seg_fcff0589ec252531134395a0dbd70a3d"},{"id":"PGPROJ-05","ok":true,"detail":"code=UNIT_SHOT_COVERAGE_INCOMPLETE missing=29c52e0f-c302-4a94-b8e7-3e283bf8aaa6 c.segment_id='' segCount=1"},{"id":"PGPROJ-06","ok":true,"detail":"oldSeg=seg_9ba61d3a732d4646e95e39c380c7108b newSeg=seg_d9dafe80ed731fec8efb00aa0a073f03 oldVisual=旧镜画面 cand.shot_id=seg_9ba61d3a732d4646e95e39c380c7108b conflicts=[\"orphaned_with_candidates\"] blocked=1"},{"id":"PGPROJ-07","ok":true,"detail":"err=injected failure on 2nd insert inserts=2 segs=0 d1='' d2=''"}]}
+EXIT=0
+waiting for server to shut down.... done
+server stopped
