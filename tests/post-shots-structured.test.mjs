@@ -14,7 +14,7 @@ delete process.env.IC_DB_SQLITE_PATH;
 const core = await import('../lib/core/index.js');
 const { setStructuredSpec } = await import('../lib/core/structured-spec.js');
 
-const { getDb, Projects, Chapters, Shots, createStructuredShot, classifyStructuredPatch, projectSceneUnits } = core;
+const { getDb, Projects, Chapters, Shots, Assets, createStructuredShot, classifyStructuredPatch, projectSceneUnits } = core;
 const db = getDb();
 let n = 0;
 
@@ -107,4 +107,21 @@ test('C06-07 结构化项目里不会出现 legacy 创作旁路（shots 行只�
   assert.equal(segRows(p.id).length, storyRows(p.id).length);
   projectSceneUnits({ projectId: p.id, chapterId: ch.id, sceneUid: 'scn-z' });
   assert.equal(segRows(p.id).length, 1, '重投影不得新增段');
+});
+
+test('C06-08 A3 接线：复合入口把绑定写成 shot_assets，投影再读进段的六组 id', () => {
+  const { p, ch } = mk();
+  const hero = Assets.create(p.id, { category: 'character', name: '罗克珊' });
+  const scene = Assets.create(p.id, { category: 'scene', name: '病房' });
+  // 场景资产要与场次基线一致（AS-5）：先建基线，否则 writeShotAssets 会按设计拒绝
+  core.upsertSceneStates(p.id, ch, [{ scene_key: 'S01', scene_id: scene.id, coord_system: {}, entries: {}, axis_lock: {} }]);
+  const r = createStructuredShot({
+    projectId: p.id, chapterId: ch.id, chapterTitle: ch.title, sceneKey: 'S01', sceneUid: 'scn-a3',
+    patch: { visual: '对峙', character_ids: [hero.id], scene_ids: [scene.id] },
+  });
+  const refs = db.prepare('SELECT role, asset_id FROM shot_assets WHERE shot_id = ? ORDER BY role').all(r.story_shot_id);
+  assert.deepEqual(refs.map((x) => x.role), ['character', 'scene'], '必须落到 shot_assets（不是只写 shots.*_ids）');
+  const seg = Shots.get(r.segment_id);   // toShot 会把 *_ids 解析成数组
+  assert.deepEqual(seg.character_ids, [hero.id], '投影要把 shot_assets 读成段的 A 组');
+  assert.deepEqual(seg.scene_ids, [scene.id]);
 });
