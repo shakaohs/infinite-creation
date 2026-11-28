@@ -1,6 +1,6 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Shots, ShotVideos } from '@/lib/core/index.js';
+import { withWriter, Shots, ShotVideos } from '@/lib/core/index.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,9 +20,9 @@ export async function DELETE(_req, { params }) {
   const picked = rest.find((v) => v.selected) || rest[0] || null;
   if (picked) {
     if (!picked.selected) ShotVideos.setSelected(sid, picked.id);
-    Shots.update(sid, { video_path: picked.video_path, status: 'done', error: '' });
+    withWriter('render', () => Shots.update(sid, { video_path: picked.video_path, status: 'done', error: '' }));
   } else {
-    Shots.update(sid, { video_path: '', status: 'pending', error: '' });
+    withWriter('render', () => Shots.update(sid, { video_path: '', status: 'pending', error: '' }));
   }
   return NextResponse.json(ShotVideos.listByShot(sid));
 }

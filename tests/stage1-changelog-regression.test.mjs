@@ -18,8 +18,46 @@ process.env.IC_DATA_DIR = TMP;
 delete process.env.IC_DB_SQLITE_PATH;
 
 const { getDb, Projects, Chapters, Shots, Assets } = await import('../lib/core/db.js');
+const { groupOfShotField } = await import('../lib/core/writer.js');
 const CL = await import('../lib/core/changelog.js');
 
+// ── P10-A C-03：Shots 四个方法现在要求显式 writer ──────────────────────────────
+// 这些历史用例按"创作写者"直接写 shots，与生产侧 legacyShotWrite 同一条路径。
+// 混组写入按 writer × 字段组矩阵**拆成多次**（与生产侧 writeRenderState 同一口径），
+// 否则等于在测试里放宽矩阵。门禁的拒绝行为由 tests/tst-aud-01~06 单独验证。
+{
+  const raw = {
+    create: Shots.create.bind(Shots), insertAt: Shots.insertAt.bind(Shots),
+    update: Shots.update.bind(Shots), remove: Shots.remove.bind(Shots),
+  };
+  const buckets = (fields) => {
+    const b = { A: {}, B: {}, C: {}, E: {} };
+    for (const [k, v] of Object.entries(fields)) {
+      const g = groupOfShotField(k) || 'A';
+      (b[g] || b.A)[k] = v;
+    }
+    return b;
+  };
+  Shots.update = (id, fields = {}, o) => {
+    if (o && o.writer) return raw.update(id, fields, o);
+    const b = buckets(fields);
+    let out = null;
+    if (Object.keys(b.C).length) out = raw.update(id, b.C, { writer: 'render' });
+    if (Object.keys(b.E).length) out = raw.update(id, b.E, { writer: 'system' });
+    const ab = { ...b.A, ...b.B };
+    if (Object.keys(ab).length) out = raw.update(id, ab, { writer: 'creative' });
+    return out || Shots.get(id);
+  };
+  Shots.create = (p, s = {}, o) => {
+    if (o && o.writer) return raw.create(p, s, o);
+    const b = buckets(s);
+    const w = Object.keys(b.C).length ? 'render' : (Object.keys(b.E).length ? 'system' : 'creative');
+    return raw.create(p, { ...b.A, ...b.B, ...b.C, ...b.E }, { writer: w });
+  };
+  Shots.insertAt = (p, c, i, s, o) => raw.insertAt(p, c, i, s || {}, o || { writer: 'creative' });
+  Shots.remove = (id, o) => raw.remove(id, o || { writer: 'creative' });
+  void groupOfShotField;
+}
 const db = getDb();
 
 function lastLogs(n = 5) {

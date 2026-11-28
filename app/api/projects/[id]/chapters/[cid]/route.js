@@ -1,6 +1,6 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Chapters, Shots, withWriteContext, tx, pickChapterFields } from '@/lib/core/index.js';
+import { legacyShotWrite, Chapters, Shots, withWriteContext, tx, pickChapterFields } from '@/lib/core/index.js';
 import { activeJobOfChapter } from '@/lib/agent/index.js';
 
 export const dynamic = 'force-dynamic';
@@ -29,7 +29,7 @@ export async function PATCH(req, { params }) {
         const updated = Chapters.update(cid, patch);
         if (!updated) return null;
         if (patch.title !== undefined && before.title !== updated.title) {
-          for (const s of Shots.list(id)) if (s.chapter === before.title) Shots.update(s.id, { chapter: updated.title });
+          for (const s of Shots.list(id)) if (s.chapter === before.title) legacyShotWrite('PATCH /chapters/:cid', () => Shots.update(s.id, { chapter: updated.title }));
         }
         return updated;
       });

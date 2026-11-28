@@ -1,6 +1,6 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Chapters, Shots, withWriteContext } from '@/lib/core/index.js';
+import { legacyShotWrite, Chapters, Shots, withWriteContext } from '@/lib/core/index.js';
 import { startCreateJob, startChapterVideoJob } from '@/lib/agent/index.js';
 import { broadcast } from '@/lib/ws.js';
 
@@ -27,7 +27,7 @@ export async function POST(req, { params }) {
   const beforeRun = () => withWriteContext('job:regenerate-chapter-full', () => {
     // 清空本章分镜 + 复位章节状态是两次写入：包一个写上下文，日志才不会退化成
     // source='internal'、batch_id=''（那种日志无法按批定位 / 整批回滚）。
-    for (const s of shots) Shots.remove(s.id);
+    for (const s of shots) legacyShotWrite('DELETE /chapters/:cid/regenerate', () => Shots.remove(s.id));
     Chapters.update(ch.id, { status: 'pending' });
   });
   const job = (() => {

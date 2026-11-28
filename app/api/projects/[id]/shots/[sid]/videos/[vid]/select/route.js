@@ -1,6 +1,6 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Shots, ShotVideos } from '@/lib/core/index.js';
+import { withWriter, Shots, ShotVideos } from '@/lib/core/index.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +15,6 @@ export async function POST(_req, { params }) {
 
   ShotVideos.setSelected(sid, vid);
   // 保持 shots.video_path 指向选中候选：导出成片 / 合成 / 打包 / 章节封面等链路零改动即可取用
-  Shots.update(sid, { video_path: video.video_path, status: 'done', error: '' });
+  withWriter('render', () => Shots.update(sid, { video_path: video.video_path, status: 'done', error: '' }));
   return NextResponse.json(ShotVideos.listByShot(sid));
 }

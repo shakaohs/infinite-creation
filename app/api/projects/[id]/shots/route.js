@@ -1,6 +1,7 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Shots, ShotVideos, Chapters, Projects, pickShotFields, idxTakenBy, validateShotContent, withWriteContext } from '@/lib/core/index.js';
+import { legacyShotWrite, Shots, ShotVideos, Chapters, Projects, pickShotFields, idxTakenBy, validateShotContent, withWriteContext,
+  isStructuredSpec, createStructuredShot } from '@/lib/core/index.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,8 +56,32 @@ export async function POST(req, { params }) {
     }
   }
 
+  // ── C-06 复合入口（D02-40 §4.6）：结构化项目三步同事务 ────────────────────
+  // ① 写 story_shots（A 组内容） ② projectRenderUnits 建段 + 回写 segment_id ③ ShotParams 写段级参数
+  // 任一步失败整体回滚：不允许「镜建了段没建」的中间态，也不允许留下无归属的段。
+  if (isStructuredSpec(id)) {
+    if (insertAt != null) {
+      return NextResponse.json({ error: '结构化项目请用 Stage 3 插入语义（global_no 定位 + 重投影），不支持 insert_at', code: 'HTTP_INSERT_AT_UNSUPPORTED' }, { status: 400 });
+    }
+    const chRow = Chapters.list(id).find((c) => c.title === chapter);
+    return withWriteContext('POST /api/projects/:id/shots (structured)', async () => {
+      try {
+        // 三步同事务在 core 里（createStructuredShot），路由只做参数与错误码映射
+        const out = createStructuredShot({
+          projectId: id, chapterId: chRow.id, chapterTitle: chRow.title,
+          sceneKey: String(patch.scene_name || '').trim() || 'default',
+          sceneUid: String(body.scene_uid || ''), patch,
+        });
+        return NextResponse.json({ shot: Shots.get(out.segment_id), story_shot_id: out.story_shot_id, segment_id: out.segment_id });
+      } catch (e) {
+        return NextResponse.json({ error: e.message, code: e.code || 'HTTP_SHOT_CREATE_FAILED' }, { status: 400 });
+      }
+    });
+  }
+
   return withWriteContext('POST /api/projects/:id/shots', async () => {
-    const s = insertAt != null ? Shots.insertAt(id, chapter, insertAt, patch) : Shots.create(id, patch);
+    const s = legacyShotWrite('POST /shots',
+      () => (insertAt != null ? Shots.insertAt(id, chapter, insertAt, patch) : Shots.create(id, patch)));
     return NextResponse.json(s);
   });
 }

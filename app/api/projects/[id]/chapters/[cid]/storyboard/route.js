@@ -1,6 +1,6 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Shots, Chapters, Projects, pickShotFields, idxTakenBy, validateShotContent, withWriteContext, tx } from '@/lib/core/index.js';
+import { legacyShotWrite, Shots, Chapters, Projects, pickShotFields, idxTakenBy, validateShotContent, withWriteContext, tx } from '@/lib/core/index.js';
 import { activeJobOfChapter } from '@/lib/agent/index.js';
 
 export const dynamic = 'force-dynamic';
@@ -61,10 +61,10 @@ export async function PUT(req, { params }) {
       let removed = 0;
       if (replace) {
         for (const s of Shots.list(id)) {
-          if (s.chapter === chapter.title) { Shots.remove(s.id); removed++; }
+          if (s.chapter === chapter.title) { legacyShotWrite('POST /chapters/:cid/storyboard.clear', () => Shots.remove(s.id)); removed++; }
         }
       }
-      const created = picked.map((p) => Shots.create(id, p));
+      const created = picked.map((p) => legacyShotWrite('POST /chapters/:cid/storyboard.create', () => Shots.create(id, p)));
       return { ok: true, replaced: replace, removed, count: created.length, shots: created };
     })));
 }

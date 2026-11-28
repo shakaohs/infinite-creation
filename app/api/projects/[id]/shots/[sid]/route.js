@@ -1,6 +1,7 @@
 // SwotAtmk/infinite-creation · 开源地址 https://github.com/SwotAtmk/infinite-creation
 import { NextResponse } from 'next/server';
-import { Shots, Chapters, pickShotFields, idxTakenBy, validateShotContent, withWriteContext } from '@/lib/core/index.js';
+import { legacyShotWrite, Shots, Chapters, pickShotFields, idxTakenBy, validateShotContent, withWriteContext,
+  isStructuredSpec, classifyStructuredPatch, ShotParams } from '@/lib/core/index.js';
 import { activeJobOfChapter } from '@/lib/agent/index.js';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,37 @@ export async function PATCH(req, { params }) {
     if (dup) return NextResponse.json({ error: 'idx ' + patch.idx + ' 已被该章分镜占用——同一章内镜号必须唯一' }, { status: 400 });
   }
 
-  return withWriteContext('PATCH /api/projects/:id/shots/:sid', async () => NextResponse.json(Shots.update(sid, patch)));
+  // ── C-06 PATCH 三分流（D02-40 §4.5 H-02）──────────────────────────────────
+  // 结构化项目上，这个 HTTP 入口只保留 B 组（段级生成参数）：
+  //   B → ShotParams.update；A → 400（走 Stage 3 镜头写入）；C/E → 400（产物/快照不给这个口）。
+  // 三分流是**互斥**的：同一请求里混着 A 和 B 也拒绝，让调用方自己拆成两次，
+  // 否则"改了一半"没有任何回滚边界（HTTP 层没有跨资源的项目事务）。
+  if (isStructuredSpec(id)) {
+    const cls = classifyStructuredPatch(patch);
+    if (cls.kind === 'stage3') {
+      return NextResponse.json({
+        error: '这些是创作字段（' + cls.fields.join(', ') + '），结构化项目必须走 Stage 3 镜头写入入口（update_shot 带 story_shot_id）',
+        code: 'HTTP_STAGE3_FIELD_REQUIRED',
+      }, { status: 400 });
+    }
+    if (cls.kind === 'denied') {
+      return NextResponse.json({
+        error: '这些字段不允许通过此入口修改：' + cls.fields.join(', ') + '（产物归生成侧、快照归项目参数）',
+        code: 'HTTP_SHOT_FIELD_DENIED',
+      }, { status: 400 });
+    }
+    if (cls.kind === 'empty') return NextResponse.json({ error: '无可更新字段' }, { status: 400 });
+    return withWriteContext('PATCH /api/projects/:id/shots/:sid (params)', async () => {
+      try {
+        const r = ShotParams.update(sid, patch, { origin: 'PATCH /shots/:sid' });
+        return NextResponse.json({ ...r, shot: Shots.get(sid) });
+      } catch (e) {
+        return NextResponse.json({ error: e.message, code: e.code || 'HTTP_SHOT_PARAM_FAILED' }, { status: 400 });
+      }
+    });
+  }
+
+  return withWriteContext('PATCH /api/projects/:id/shots/:sid', async () => NextResponse.json(legacyShotWrite('PATCH /shots/:sid', () => Shots.update(sid, patch))));
 }
 
 export async function DELETE(_req, { params }) {
@@ -45,7 +76,7 @@ export async function DELETE(_req, { params }) {
     return NextResponse.json({ error: '本章正在运行任务，运行中不可删除分镜；请等任务结束或先停止任务' }, { status: 409 });
   }
   return withWriteContext('DELETE /api/projects/:id/shots/:sid', async () => {
-    Shots.remove(sid);
+    legacyShotWrite('DELETE /shots/:sid', () => Shots.remove(sid));
     return NextResponse.json({ ok: true });
   });
 }
