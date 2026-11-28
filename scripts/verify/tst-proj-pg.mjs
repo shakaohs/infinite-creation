@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// D48-05 / D49-02 · PostgreSQL 投影兼容性冒烟（D02-48 §六 + D02-49 §二、§五）
+// D48-05 / D49-02 / D50-01 · PostgreSQL 投影兼容性冒烟（D02-48 §六 + D02-49 §二 + D02-50 §二）
 //
 // 为什么是独立脚本而不是 node:test 用例：
 //   `lib/core/db.js` 在测试进程里**一律拒绝** PG（`TEST_REQUIRES_SQLITE`），因为 IC_DATA_DIR
 //   对 PG 没有隔离意义。这里不是测试进程，走应用真实连接路径。
 //
-// 十项（逐项打印 PASS/FAIL）：D02-48 七项 + D02-49 三项候选守卫
+// 十二项（逐项打印 PASS/FAIL）：D02-48 七项 + D02-49 三项 + D02-50 两项跨段守卫
 //   PGPROJ-01 单镜单段投影
 //   PGPROJ-02 一段多镜投影
 //   PGPROJ-03 重复投影（幂等：created=0 / updated=0 / unchanged=1）
@@ -16,6 +16,8 @@
 //   PGPROJ-08 候选存在 + 内容变化 ⇒ UNIT_SEGMENT_CANDIDATE_CONFLICT，段/候选不变
 //   PGPROJ-09 内容相同的重投影 ⇒ 允许（幂等），候选不动
 //   PGPROJ-10 候选存在 + 归属增加（合并）⇒ 拒绝，segment_id 不回写
+//   PGPROJ-11 合并 A+B、候选只在 B（非 base）⇒ 拒绝（segment_absorbed）
+//   PGPROJ-12 换段 id 不能把候选变孤儿：显式新 id ⇒ 拒绝，且未建新段
 //
 // 安全前置：连到的库**必须是** `infinite_creation_test`，否则立即退出（exit 2），不执行任何写操作。
 // 不以 P2 的 19/19 锁测试作为投影证据（D02-48 §六 明令）。
@@ -63,7 +65,7 @@ async function preflight() {
 const num = (v) => Number(v);
 
 async function main() {
-  log('=== PostgreSQL 投影兼容性冒烟（D02-48 D48-05 / D02-49 D49-02）===');
+  log('=== PostgreSQL 投影兼容性冒烟（D02-48 / D02-49 / D02-50）===');
   const meta = await preflight();
   if (!String(meta.version).startsWith('16.')) {
     record('SELF', '服务端版本 16.x', false, meta.version);
@@ -276,6 +278,74 @@ async function main() {
       && segIdOf(e1.id) === eSeg && segIdOf(e2.id) === '',
       `code=${mergeErr && mergeErr.code} reason=${mergeErr && mergeErr.detail && mergeErr.detail.reason}`
       + ` e1='${segIdOf(e1.id)}' e2='${segIdOf(e2.id)}' expect='${eSeg}'`);
+
+    // ── 11~12 跨段候选守卫（D02-50 §二）──────────────────────────────────
+    const s5 = 'pg-d50-s5';
+    const f1 = insertStoryShot({
+      project_id: pid, chapter_id: cid, scene_key: 'S05', scene_uid: s5,
+      shot_no: 10, global_no: 10, visual_content: 'F1', story_duration: 4,
+    });
+    const f2 = insertStoryShot({
+      project_id: pid, chapter_id: cid, scene_key: 'S05', scene_uid: s5,
+      shot_no: 11, global_no: 11, visual_content: 'F2', story_duration: 4,
+    });
+    const rf = projectSceneUnits({ projectId: pid, chapterId: cid, sceneUid: s5 });
+    const fSegA = rf.units[0].segment_id;
+    const fSegB = rf.units[1].segment_id;
+    db.prepare('INSERT INTO shot_videos (id,project_id,shot_id,idx,video_path,seed,selected,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run('pg-cand-d50', pid, fSegB, 0, '/pg-cand-d50.mp4', 17, 1, 1, 1);
+    const fSegABefore = { ...db.prepare('SELECT * FROM shots WHERE id = ?').get(fSegA) };
+    const fSegBBefore = { ...db.prepare('SELECT * FROM shots WHERE id = ?').get(fSegB) };
+    const fCandBefore = { ...db.prepare('SELECT * FROM shot_videos WHERE id = ?').get('pg-cand-d50') };
+    let crossErr = null;
+    try {
+      projectSceneUnits({ projectId: pid, chapterId: cid, sceneUid: s5, units: [{ shot_ids: [f1.id, f2.id] }] });
+    } catch (e) { crossErr = e; }
+    const fSegAAfter = { ...db.prepare('SELECT * FROM shots WHERE id = ?').get(fSegA) };
+    const fSegBAfter = { ...db.prepare('SELECT * FROM shots WHERE id = ?').get(fSegB) };
+    const fCandAfter = { ...db.prepare('SELECT * FROM shot_videos WHERE id = ?').get('pg-cand-d50') };
+    record('PGPROJ-11', '合并 A+B、候选只在 B（非 base）⇒ 拒绝（segment_absorbed），两段/候选均不变',
+      crossErr && crossErr.code === 'UNIT_SEGMENT_CANDIDATE_CONFLICT'
+      && crossErr.detail?.reason === 'segment_absorbed'
+      && crossErr.detail?.segment_id === fSegB
+      && JSON.stringify(fSegABefore) === JSON.stringify(fSegAAfter)
+      && JSON.stringify(fSegBBefore) === JSON.stringify(fSegBAfter)
+      && JSON.stringify(fCandBefore) === JSON.stringify(fCandAfter)
+      && segIdOf(f1.id) === fSegA && segIdOf(f2.id) === fSegB,
+      `code=${crossErr && crossErr.code} reason=${crossErr && crossErr.detail && crossErr.detail.reason}`
+      + ` segB=${fSegB} allSame=${JSON.stringify(fSegABefore) === JSON.stringify(fSegAAfter)
+        && JSON.stringify(fSegBBefore) === JSON.stringify(fSegBAfter)
+        && JSON.stringify(fCandBefore) === JSON.stringify(fCandAfter)}`);
+
+    // 12：显式新段 id 把候选段的唯一归属镜迁走 ⇒ 拒绝，且不得建出新段
+    const s6 = 'pg-d50-s6';
+    const g1 = insertStoryShot({
+      project_id: pid, chapter_id: cid, scene_key: 'S06', scene_uid: s6,
+      shot_no: 12, global_no: 12, visual_content: 'G1', story_duration: 4,
+    });
+    const rg = projectSceneUnits({ projectId: pid, chapterId: cid, sceneUid: s6 });
+    const gSeg = rg.units[0].segment_id;
+    db.prepare('INSERT INTO shot_videos (id,project_id,shot_id,idx,video_path,seed,selected,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run('pg-cand-d50b', pid, gSeg, 0, '/pg-cand-d50b.mp4', 19, 1, 1, 1);
+    const g2 = insertStoryShot({
+      project_id: pid, chapter_id: cid, scene_key: 'S06', scene_uid: s6,
+      shot_no: 13, global_no: 13, visual_content: 'G2', story_duration: 3,
+    });
+    let bypassErr = null;
+    try {
+      projectSceneUnits({
+        projectId: pid, chapterId: cid, sceneUid: s6,
+        units: [{ segment_id: 'seg_pg_d50_new', shot_ids: [g1.id, g2.id] }],
+      });
+    } catch (e) { bypassErr = e; }
+    const newRow = db.prepare('SELECT id FROM shots WHERE id = ?').get('seg_pg_d50_new');
+    record('PGPROJ-12', '换段 id 不能把候选变孤儿：显式新 id ⇒ 拒绝（segment_absorbed），未建新段',
+      bypassErr && bypassErr.code === 'UNIT_SEGMENT_CANDIDATE_CONFLICT'
+      && bypassErr.detail?.reason === 'segment_absorbed'
+      && bypassErr.detail?.segment_id === gSeg
+      && !newRow && segIdOf(g1.id) === gSeg,
+      `code=${bypassErr && bypassErr.code} reason=${bypassErr && bypassErr.detail && bypassErr.detail.reason}`
+      + ` newSeg=${newRow ? newRow.id : '(none)'} g1='${segIdOf(g1.id)}' expect='${gSeg}'`);
   } finally {
     try { Projects.remove(pid); } catch (e) { log('[清理] 删除测试项目失败（不影响判定）：' + (e && e.message)); }
   }

@@ -1,0 +1,29 @@
+# D02-50 · D50-01/D50-03 PostgreSQL 投影 + 跨段候选守卫 · 取证
+# 生成时间：2026-11-28 18:0x (CST)｜代码：D02-50 定向修复后（未含报告提交）
+# 服务端：PostgreSQL 16.9（便携版 D://pg16）｜测试库：infinite_creation_test（脚本前置库名自检，非该库 exit 2）
+# 端口：127.0.0.1:55433（55432 被本机其它进程占用，PG 报 bind Permission denied）
+# 连接：脚本内独立连接，走应用真实连接路径（IC_DB=postgres + DATABASE_URL）；非 node:test 进程
+# 用例：D02-48 七项 + D02-49 三项 + D02-50 两项（PGPROJ-11/12）+ 驱动自检 = 13
+# 收尾：pg_ctl -m fast stop，server stopped｜PROJ_EXIT=0
+# 命令：PGHOST=127.0.0.1 PGPORT=55433 PGUSER=postgres PGDATABASE=infinite_creation_test node scripts/verify/tst-proj-pg.mjs
+
+=== RUN 1: 投影 + 候选守卫 ===
+=== PostgreSQL 投影兼容性冒烟（D02-48 / D02-49 / D02-50）===
+[自检] 服务端版本=16.9 库名=infinite_creation_test 后端pid=38264
+[INFO][2026-11-28T09:51:33.465Z] 数据库驱动：PostgreSQL
+PASS  SELF-PG  应用层连上 PostgreSQL  dialect=postgres
+PASS  PGPROJ-01  单镜单段投影：1 镜 ⇒ 1 段，A 组取自镜  created=1 idx=1 visual=A duration=4
+PASS  PGPROJ-02  一段多镜投影：两镜合并为 1 段，内容按行拼接、时长相加  units=1 duration=9 visual="A\nB" segCount=1
+PASS  PGPROJ-03  重复投影幂等：created=0 / updated=0 / unchanged=1，整行不变  created=0 updated=0 unchanged=1
+PASS  PGPROJ-04  segment_id 回写：两镜都指向合并后的同一段  a=seg_6f8406a9ed5acfbc9ff62bf8579929e2 b=seg_6f8406a9ed5acfbc9ff62bf8579929e2 expect=seg_6f8406a9ed5acfbc9ff62bf8579929e2
+PASS  PGPROJ-05  显式分段漏镜 ⇒ UNIT_SHOT_COVERAGE_INCOMPLETE，且零写入  code=UNIT_SHOT_COVERAGE_INCOMPLETE missing=f7e19079-e9ac-4630-b93c-bcd3000d6840 c.segment_id='' segCount=1
+PASS  PGPROJ-06  候选保护：旧段有候选 + 同段序新镜 ⇒ 换新 id，旧段/候选不动  oldSeg=seg_92d6673945c18f95834266bf008fa9f5 newSeg=seg_384a348eb94c41a1bfb754c271676622 oldVisual=旧镜画面 cand.shot_id=seg_92d6673945c18f95834266bf008fa9f5 conflicts=["orphaned_with_candidates"] blocked=1
+PASS  PGPROJ-07  投影中途失败整体回滚：第二段 INSERT 抛错 ⇒ 第一段也不留、segment_id 不回写  err=injected failure on 2nd insert inserts=2 segs=0 d1='' d2=''
+PASS  PGPROJ-08  候选存在 + 内容变化 ⇒ UNIT_SEGMENT_CANDIDATE_CONFLICT，段/候选逐列不变  code=UNIT_SEGMENT_CANDIDATE_CONFLICT changed=visual segSame=true candSame=true
+PASS  PGPROJ-09  内容相同的重投影 ⇒ 允许（created=0 / updated=0 / unchanged=1），候选不动  created=0 updated=0 unchanged=1 candSame=true
+PASS  PGPROJ-10  候选存在 + 归属增加（合并）⇒ 拒绝，两镜 segment_id 均未改回写  code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=ownership_changed e1='seg_d6dcb5103eb8a6a3af36c79f21c17c94' e2='' expect='seg_d6dcb5103eb8a6a3af36c79f21c17c94'
+PASS  PGPROJ-11  合并 A+B、候选只在 B（非 base）⇒ 拒绝（segment_absorbed），两段/候选均不变  code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed segB=seg_4bc112ddba672c916a62115295a94a11 allSame=true
+PASS  PGPROJ-12  换段 id 不能把候选变孤儿：显式新 id ⇒ 拒绝（segment_absorbed），未建新段  code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed newSeg=(none) g1='seg_cc62e83a5472ee0088fb74609d6e2f24' expect='seg_cc62e83a5472ee0088fb74609d6e2f24'
+
+PROJ-PG-RESULT {"server_version":"16.9","database":"infinite_creation_test","backend_pid":38264,"total":13,"pass":13,"fail":0,"ok":true,"cases":[{"id":"SELF-PG","ok":true,"detail":"dialect=postgres"},{"id":"PGPROJ-01","ok":true,"detail":"created=1 idx=1 visual=A duration=4"},{"id":"PGPROJ-02","ok":true,"detail":"units=1 duration=9 visual=\"A\\nB\" segCount=1"},{"id":"PGPROJ-03","ok":true,"detail":"created=0 updated=0 unchanged=1"},{"id":"PGPROJ-04","ok":true,"detail":"a=seg_6f8406a9ed5acfbc9ff62bf8579929e2 b=seg_6f8406a9ed5acfbc9ff62bf8579929e2 expect=seg_6f8406a9ed5acfbc9ff62bf8579929e2"},{"id":"PGPROJ-05","ok":true,"detail":"code=UNIT_SHOT_COVERAGE_INCOMPLETE missing=f7e19079-e9ac-4630-b93c-bcd3000d6840 c.segment_id='' segCount=1"},{"id":"PGPROJ-06","ok":true,"detail":"oldSeg=seg_92d6673945c18f95834266bf008fa9f5 newSeg=seg_384a348eb94c41a1bfb754c271676622 oldVisual=旧镜画面 cand.shot_id=seg_92d6673945c18f95834266bf008fa9f5 conflicts=[\"orphaned_with_candidates\"] blocked=1"},{"id":"PGPROJ-07","ok":true,"detail":"err=injected failure on 2nd insert inserts=2 segs=0 d1='' d2=''"},{"id":"PGPROJ-08","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT changed=visual segSame=true candSame=true"},{"id":"PGPROJ-09","ok":true,"detail":"created=0 updated=0 unchanged=1 candSame=true"},{"id":"PGPROJ-10","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=ownership_changed e1='seg_d6dcb5103eb8a6a3af36c79f21c17c94' e2='' expect='seg_d6dcb5103eb8a6a3af36c79f21c17c94'"},{"id":"PGPROJ-11","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed segB=seg_4bc112ddba672c916a62115295a94a11 allSame=true"},{"id":"PGPROJ-12","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed newSeg=(none) g1='seg_cc62e83a5472ee0088fb74609d6e2f24' expect='seg_cc62e83a5472ee0088fb74609d6e2f24'"}]}
+PROJ_EXIT=0
