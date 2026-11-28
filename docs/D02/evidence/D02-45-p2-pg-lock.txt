@@ -1,0 +1,24 @@
+=== P2 · PostgreSQL 真库 · TST-LOCK-01~13 ===
+[自检] 服务端版本=16.9 库名=infinite_creation_test 后端pid=26656
+PASS  SELF-1  服务端在跑（可建立连接）  127.0.0.1:55432
+PASS  SELF-2  测试库可连（返回 backend pid）  pid=26656
+PASS  SELF-3  版本 16.x  16.9
+PASS  SELF-4  advisory lock 可执行且 pg_locks 可见  hashtextextended=329139575893361355 锁数=1
+PASS  SELF-5  两个独立连接（两个不同 backend pid）  pid1=26656 pid2=2696
+PASS  SELF-6  连的是测试库  infinite_creation_test
+[预热] 应用 schema 就绪（连接 pid=28328）
+PASS  LOCK-01  同项目两事务串行取号，n=[1,2]  wall=1289ms n=[1,2] rows=2 pid=41544/12408 errA=- errB=-
+PASS  LOCK-02  求解/读事务等待写入方提交，读到一致快照（不半新半旧）  holderPid=19596 readerPid=37440 rows=[1] readerElapsed=287ms
+PASS  LOCK-03  不同项目并行写入：不互相阻塞（墙钟 < 两个事务耗时之和）  wall=1448ms vs 串行下界=1829ms（单事务 920/909）pid=12684/41168
+PASS  LOCK-04  事务失败后锁释放，后续事务 5s 内取到锁且失败写入已回滚  f.code=PROBE_FAIL 取锁耗时=412ms rows=1
+PASS  LOCK-05  连接被杀后 advisory 锁随事务释放、无残留、无半写行  被杀前锁数=1 被杀后=0 重新取锁=408ms rows=1
+PASS  LOCK-06  单项目最外层：fn 内 locked=[P]，提交后 null，返回值透传  locked=["pg-lock06"] after=null
+PASS  LOCK-07  多项目乱序输入 [Q,P]：实际取锁序列 [P,Q]  order=["pg-p07","pg-q07"]
+PASS  LOCK-08  同项目嵌套复用：取锁次数 1  order=["pg-lock08"]
+PASS  LOCK-09  已持 P 后 txProject(Q)：TX_CROSS_PROJECT_NESTED，写入未发生  code=TX_CROSS_PROJECT_NESTED otherRows=0
+PASS  LOCK-10  已持锁后 txProjects（相同/超集/不相交）全部 TX_NESTED_MULTI_PROJECT  TX_NESTED_MULTI_PROJECT,TX_NESTED_MULTI_PROJECT,TX_NESTED_MULTI_PROJECT
+PASS  LOCK-11  两事务相反输入顺序启动：都按 [P,Q] 取锁，无死锁（40P01），两者都成功  wall=1853ms orderA=["pg-p11","pg-q11"] orderB=["pg-p11","pg-q11"] err=
+PASS  LOCK-12  外部事务持有→回滚后，另一连接能在 lock_timeout 内取到同一项目锁  持锁时 pg_locks=1 取锁耗时=410ms
+PASS  LOCK-13  PG 真库整组重跑：真实 pg_advisory_xact_lock 在 pg_locks 可见，06~12 不变量保持  pg_locks.advisory=1 行 mode=ExclusiveLock
+
+P2-RESULT {"server_version":"16.9","database":"infinite_creation_test","control_pid":26656,"total":19,"pass":19,"fail":0,"ok":true,"cases":[{"id":"SELF-1","ok":true,"detail":"127.0.0.1:55432"},{"id":"SELF-2","ok":true,"detail":"pid=26656"},{"id":"SELF-3","ok":true,"detail":"16.9"},{"id":"SELF-4","ok":true,"detail":"hashtextextended=329139575893361355 锁数=1"},{"id":"SELF-5","ok":true,"detail":"pid1=26656 pid2=2696"},{"id":"SELF-6","ok":true,"detail":"infinite_creation_test"},{"id":"LOCK-01","ok":true,"detail":"wall=1289ms n=[1,2] rows=2 pid=41544/12408 errA=- errB=-"},{"id":"LOCK-02","ok":true,"detail":"holderPid=19596 readerPid=37440 rows=[1] readerElapsed=287ms"},{"id":"LOCK-03","ok":true,"detail":"wall=1448ms vs 串行下界=1829ms（单事务 920/909）pid=12684/41168"},{"id":"LOCK-04","ok":true,"detail":"f.code=PROBE_FAIL 取锁耗时=412ms rows=1"},{"id":"LOCK-05","ok":true,"detail":"被杀前锁数=1 被杀后=0 重新取锁=408ms rows=1"},{"id":"LOCK-06","ok":true,"detail":"locked=[\"pg-lock06\"] after=null"},{"id":"LOCK-07","ok":true,"detail":"order=[\"pg-p07\",\"pg-q07\"]"},{"id":"LOCK-08","ok":true,"detail":"order=[\"pg-lock08\"]"},{"id":"LOCK-09","ok":true,"detail":"code=TX_CROSS_PROJECT_NESTED otherRows=0"},{"id":"LOCK-10","ok":true,"detail":"TX_NESTED_MULTI_PROJECT,TX_NESTED_MULTI_PROJECT,TX_NESTED_MULTI_PROJECT"},{"id":"LOCK-11","ok":true,"detail":"wall=1853ms orderA=[\"pg-p11\",\"pg-q11\"] orderB=[\"pg-p11\",\"pg-q11\"] err="},{"id":"LOCK-12","ok":true,"detail":"持锁时 pg_locks=1 取锁耗时=410ms"},{"id":"LOCK-13","ok":true,"detail":"pg_locks.advisory=1 行 mode=ExclusiveLock"}]}
