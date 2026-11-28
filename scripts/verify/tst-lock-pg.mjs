@@ -86,7 +86,9 @@ async function preflight() {
 
 // ── 事务子进程（每条 = 一条独立连接）────────────────────────────────────────
 function childEnv(job, extra = {}) {
-  const env = { ...process.env, IC_LOCK_JOB: JSON.stringify(job), IC_DB: 'postgres', IC_DATA_DIR: TMP };
+  // IC_LOCK_TEST=1：取锁顺序观察者（内部模块）的显式开关。不设它 ⇒ 观察者拒绝注入，
+  // 子进程会以 exit 2 退出 —— 让"没观测到"显形，而不是给出一份 order=[] 的假证据。
+  const env = { ...process.env, IC_LOCK_JOB: JSON.stringify(job), IC_DB: 'postgres', IC_DATA_DIR: TMP, IC_LOCK_TEST: '1' };
   delete env.NODE_TEST_CONTEXT;
   return { ...env, ...extra };
 }

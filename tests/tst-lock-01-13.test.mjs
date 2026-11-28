@@ -32,7 +32,9 @@ getDb();
 test.after(() => { try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* 占用中 */ } });
 
 function childEnv(job, extra = {}) {
-  const env = { ...process.env, IC_DATA_DIR: TMP, IC_LOCK_JOB: JSON.stringify(job) };
+  // IC_LOCK_TEST=1：取锁顺序观察者的显式开关（内部模块，不是公共 API；D42-02）。
+  // 少了它子进程会 exit 2，用例直接失败 —— 不允许"order 为空"被当成"没有取锁"。
+  const env = { ...process.env, IC_DATA_DIR: TMP, IC_LOCK_JOB: JSON.stringify(job), IC_LOCK_TEST: '1' };
   delete env.NODE_TEST_CONTEXT;   // 子进程不是 node:test 进程，它只跑一个事务
   for (const k of ['DATABASE_URL', 'IC_DB', 'PGHOST', 'PGPORT', 'PGUSER', 'PGDATABASE', 'PGPASSWORD']) delete env[k];
   return { ...env, ...extra };

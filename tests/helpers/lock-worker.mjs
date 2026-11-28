@@ -15,8 +15,11 @@ import fs from 'node:fs';
 
 const job = JSON.parse(process.env.IC_LOCK_JOB || '{}');
 const {
-  tx, txProject, txProjects, lockedProjects, assertProjectLocked, getDb, uid, setLockOrderSink,
+  tx, txProject, txProjects, lockedProjects, assertProjectLocked, getDb, uid,
 } = await import('../../lib/core/index.js');
+// 取锁顺序观察者从**内部模块**引用，不经 lib/core/index.js（D42-02）：
+// 它不是公共 API，公共面里既没有它、也不该有它。父进程负责传 IC_LOCK_TEST=1。
+const { setLockOrderSink, lockOrderObserving } = await import('../../lib/core/internal/lock-order.js');
 
 const db = getDb();
 const backendPid = db.dialect === 'postgres'
@@ -39,6 +42,11 @@ const insertProbe = (pid, n, tag) => db.prepare('INSERT INTO lock_probe (id,proj
 
 const order = [];
 setLockOrderSink((pid) => order.push(pid));
+if (!lockOrderObserving()) {
+  // 不静默：观察者没挂上时 order 恒为 []，会被误读成"没取锁"而不是"没观测"
+  process.stderr.write('lock-worker: 取锁观察者未生效（IC_LOCK_TEST 未设为 1？）\n');
+  process.exit(2);
+}
 
 const readyFile = process.env.IC_LOCK_READY_FILE || '';
 
