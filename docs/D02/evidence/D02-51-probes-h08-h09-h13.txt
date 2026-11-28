@@ -1,0 +1,82 @@
+# D02-51 · 缺陷探针：H-08 / H-09 / H-13 与回滚打回 segment_id · 取证
+# 生成时间：2026-11-28 18:1x (CST)｜SQLite 临时目录｜代码 5011a81（未改生产代码）
+# 说明：探针脚本位于系统临时目录，未入库；下面每段前是它验证的结论点。
+
+## 1) H-13：结构化项目回滚未按 409 拒绝（投影后 → 漂移 blocked；未投影时直接 applied）
+[INFO][2026-11-28T10:10:46.622Z] 数据库驱动：SQLite
+{
+  "rollback": {
+    "logId": "ecf1d3e6-2640-4f91-aaa5-9ee0602209b0",
+    "result": {
+      "applied": 0,
+      "blocked": true
+    },
+    "error": null,
+    "after": {
+      "storyShots": 1,
+      "segs": 1
+    }
+  },
+  "chapterDelete": {
+    "ssBefore": 1,
+    "chapterErr": null,
+    "ssAfter": 1,
+    "orphansLeft": 1
+  },
+  "projectDelete": {
+    "storyShotsLeft": 0
+  }
+}
+
+## 2) 未投影时回滚 create / 投影后 force 回滚 create ⇒ 镜被删、段残留
+[INFO][2026-11-28T10:10:47.040Z] 数据库驱动：SQLite
+{
+  "noProjection": {
+    "applied": 1,
+    "blocked": false,
+    "error": null,
+    "storyShotLeft": 0
+  },
+  "forceAfterProjection": {
+    "applied": 1,
+    "blocked": false,
+    "error": null,
+    "storyShotLeft": 0,
+    "segsLeft": 1
+  }
+}
+
+## 3) H-09：删章节不级联 story_shots（ssBefore=1 → ssAfter=1）
+（见第 1 段 chapterDelete 字段）
+
+## 4) H-08：结构化项目改章名时 Shots.update(chapter) 被拒 ⇒ 路由 500
+[INFO][2026-11-28T10:10:47.476Z] 数据库驱动：SQLite
+{
+  "segChapter": "第1章",
+  "updateErr": {
+    "code": "STRUCTURED_LEGACY_WRITE_FORBIDDEN",
+    "message": "结构化项目的创作字段（chapter）必须走 Stage 3 写入入口，不得经 legacy shots"
+  }
+}
+
+## 5) A2 update 回滚会把 segment_id 打回旧值（force 绕过漂移）⇒ 镜与段脱钩、段成孤儿
+[INFO][2026-11-28T10:10:47.889Z] 数据库驱动：SQLite
+{
+  "logBefore": {
+    "segment_id": "",
+    "visual": "v1"
+  },
+  "afterProjection": {
+    "segment_id": "seg_1d7a741f6724f5cbda7aa499c0c79438",
+    "visual_content": "v2"
+  },
+  "rollback": {
+    "applied": 1,
+    "blocked": false
+  },
+  "afterRollback": {
+    "segment_id": "",
+    "visual_content": "v1"
+  },
+  "orphanedSegments": 1
+}

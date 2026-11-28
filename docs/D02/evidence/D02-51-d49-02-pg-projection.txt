@@ -1,0 +1,23 @@
+# D02-51 · 投影 + 候选/跨段守卫（PostgreSQL）· 取证（回归，非本轮新增）
+# 服务端 16.9｜库 infinite_creation_test｜端口 55433｜命令 node scripts/verify/tst-proj-pg.mjs
+
+=== RUN 2: 投影 + 候选/跨段守卫 ===
+=== PostgreSQL 投影兼容性冒烟（D02-48 / D02-49 / D02-50）===
+[自检] 服务端版本=16.9 库名=infinite_creation_test 后端pid=11400
+[INFO][2026-11-28T10:09:21.601Z] 数据库驱动：PostgreSQL
+PASS  SELF-PG  应用层连上 PostgreSQL  dialect=postgres
+PASS  PGPROJ-01  单镜单段投影：1 镜 ⇒ 1 段，A 组取自镜  created=1 idx=1 visual=A duration=4
+PASS  PGPROJ-02  一段多镜投影：两镜合并为 1 段，内容按行拼接、时长相加  units=1 duration=9 visual="A\nB" segCount=1
+PASS  PGPROJ-03  重复投影幂等：created=0 / updated=0 / unchanged=1，整行不变  created=0 updated=0 unchanged=1
+PASS  PGPROJ-04  segment_id 回写：两镜都指向合并后的同一段  a=seg_17cb2d916371042eb65e3a7a4be4fd45 b=seg_17cb2d916371042eb65e3a7a4be4fd45 expect=seg_17cb2d916371042eb65e3a7a4be4fd45
+PASS  PGPROJ-05  显式分段漏镜 ⇒ UNIT_SHOT_COVERAGE_INCOMPLETE，且零写入  code=UNIT_SHOT_COVERAGE_INCOMPLETE missing=662660af-0880-4efa-9bcb-d7ce29a2dd77 c.segment_id='' segCount=1
+PASS  PGPROJ-06  候选保护：旧段有候选 + 同段序新镜 ⇒ 换新 id，旧段/候选不动  oldSeg=seg_364ef09fcabc0a3b89ed608abdae181b newSeg=seg_f1b957571e989d1451c071a9a650abc0 oldVisual=旧镜画面 cand.shot_id=seg_364ef09fcabc0a3b89ed608abdae181b conflicts=["orphaned_with_candidates"] blocked=1
+PASS  PGPROJ-07  投影中途失败整体回滚：第二段 INSERT 抛错 ⇒ 第一段也不留、segment_id 不回写  err=injected failure on 2nd insert inserts=2 segs=0 d1='' d2=''
+PASS  PGPROJ-08  候选存在 + 内容变化 ⇒ UNIT_SEGMENT_CANDIDATE_CONFLICT，段/候选逐列不变  code=UNIT_SEGMENT_CANDIDATE_CONFLICT changed=visual segSame=true candSame=true
+PASS  PGPROJ-09  内容相同的重投影 ⇒ 允许（created=0 / updated=0 / unchanged=1），候选不动  created=0 updated=0 unchanged=1 candSame=true
+PASS  PGPROJ-10  候选存在 + 归属增加（合并）⇒ 拒绝，两镜 segment_id 均未改回写  code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=ownership_changed e1='seg_8b45227750616f4e9520938024277cb4' e2='' expect='seg_8b45227750616f4e9520938024277cb4'
+PASS  PGPROJ-11  合并 A+B、候选只在 B（非 base）⇒ 拒绝（segment_absorbed），两段/候选均不变  code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed segB=seg_4c7c51c32673372deda1006164491088 allSame=true
+PASS  PGPROJ-12  换段 id 不能把候选变孤儿：显式新 id ⇒ 拒绝（segment_absorbed），未建新段  code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed newSeg=(none) g1='seg_a123f23eae7905af1d46ceed4aa1d452' expect='seg_a123f23eae7905af1d46ceed4aa1d452'
+
+PROJ-PG-RESULT {"server_version":"16.9","database":"infinite_creation_test","backend_pid":11400,"total":13,"pass":13,"fail":0,"ok":true,"cases":[{"id":"SELF-PG","ok":true,"detail":"dialect=postgres"},{"id":"PGPROJ-01","ok":true,"detail":"created=1 idx=1 visual=A duration=4"},{"id":"PGPROJ-02","ok":true,"detail":"units=1 duration=9 visual=\"A\\nB\" segCount=1"},{"id":"PGPROJ-03","ok":true,"detail":"created=0 updated=0 unchanged=1"},{"id":"PGPROJ-04","ok":true,"detail":"a=seg_17cb2d916371042eb65e3a7a4be4fd45 b=seg_17cb2d916371042eb65e3a7a4be4fd45 expect=seg_17cb2d916371042eb65e3a7a4be4fd45"},{"id":"PGPROJ-05","ok":true,"detail":"code=UNIT_SHOT_COVERAGE_INCOMPLETE missing=662660af-0880-4efa-9bcb-d7ce29a2dd77 c.segment_id='' segCount=1"},{"id":"PGPROJ-06","ok":true,"detail":"oldSeg=seg_364ef09fcabc0a3b89ed608abdae181b newSeg=seg_f1b957571e989d1451c071a9a650abc0 oldVisual=旧镜画面 cand.shot_id=seg_364ef09fcabc0a3b89ed608abdae181b conflicts=[\"orphaned_with_candidates\"] blocked=1"},{"id":"PGPROJ-07","ok":true,"detail":"err=injected failure on 2nd insert inserts=2 segs=0 d1='' d2=''"},{"id":"PGPROJ-08","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT changed=visual segSame=true candSame=true"},{"id":"PGPROJ-09","ok":true,"detail":"created=0 updated=0 unchanged=1 candSame=true"},{"id":"PGPROJ-10","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=ownership_changed e1='seg_8b45227750616f4e9520938024277cb4' e2='' expect='seg_8b45227750616f4e9520938024277cb4'"},{"id":"PGPROJ-11","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed segB=seg_4c7c51c32673372deda1006164491088 allSame=true"},{"id":"PGPROJ-12","ok":true,"detail":"code=UNIT_SEGMENT_CANDIDATE_CONFLICT reason=segment_absorbed newSeg=(none) g1='seg_a123f23eae7905af1d46ceed4aa1d452' expect='seg_a123f23eae7905af1d46ceed4aa1d452'"}]}
+PROJ_EXIT=0
